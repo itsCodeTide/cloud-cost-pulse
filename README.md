@@ -1,8 +1,6 @@
 # ⚡ Cloud Cost Pulse
 
 Full-stack FinOps & Cloud Cost Optimization Platform — React + Vite + Tailwind + Express + Claude AI.
-**One-click deploy to Render. Works in demo mode with no API key.**
-
 ---
 
 ## 🚀 Run Locally
