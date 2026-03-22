@@ -27,17 +27,6 @@ npm run dev
 
 ---
 
-## ☁️ Deploy to Render
-
-1. Push to GitHub: `git init && git add . && git commit -m "init" && git push`
-2. **render.com → New → Blueprint → connect repo** (reads render.yaml automatically)
-3. Add env var: `ANTHROPIC_API_KEY` (optional — demo mode works without it)
-4. Deploy → live in ~2 minutes at `https://cloud-cost-pulse.onrender.com`
-
-Verify: `curl https://your-app.onrender.com/api/health`
-
----
-
 ## ✅ Features
 
 | Page | Description |
