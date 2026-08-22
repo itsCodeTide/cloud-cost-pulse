@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Cloud-Cost-Pulse Backend API Test Suite
-Tests all backend endpoints with Clerk authentication
+Tests all critical backend endpoints with Clerk authentication
 """
 
 import requests
@@ -12,905 +12,851 @@ from typing import Optional, Dict, Any
 
 # Configuration
 BASE_URL = "https://finops-dash.preview.emergentagent.com/api"
-CLERK_API_BASE = "https://api.clerk.com/v1"
+CLERK_API_URL = "https://api.clerk.com/v1"
 CLERK_SECRET_KEY = "sk_test_tQ0ZZVxvsOIHsdTQ4r0uYMrPRRU5t3JpddidutPE2x"
+TEST_EMAIL = "ccp.tester@example.com"
+TEST_PASSWORD = "CcpTest!2025Secure"
 
-# Test users
-TEST_USER_1 = {
-    "email": "ccp.tester@example.com",
-    "password": "CcpTest!2025Secure"
-}
-TEST_USER_2 = {
-    "email": "ccp.tester2@example.com",
-    "password": "CcpTest!2025Secure"
-}
+# Global state
+auth_token: Optional[str] = None
+token_expires_at: float = 0
+user_id: Optional[str] = None
+created_resource_id: Optional[str] = None
 
-class Colors:
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    END = '\033[0m'
 
-def log_test(name: str):
-    print(f"\n{Colors.BLUE}{'='*80}{Colors.END}")
-    print(f"{Colors.BLUE}TEST: {name}{Colors.END}")
-    print(f"{Colors.BLUE}{'='*80}{Colors.END}")
+def log_test(name: str, status: str, details: str = ""):
+    """Log test result"""
+    symbol = "✅" if status == "PASS" else "❌" if status == "FAIL" else "⚠️"
+    print(f"\n{symbol} {name}: {status}")
+    if details:
+        print(f"   {details}")
 
-def log_success(msg: str):
-    print(f"{Colors.GREEN}✓ {msg}{Colors.END}")
 
-def log_error(msg: str):
-    print(f"{Colors.RED}✗ {msg}{Colors.END}")
-
-def log_info(msg: str):
-    print(f"{Colors.YELLOW}ℹ {msg}{Colors.END}")
-
-class ClerkAuth:
-    """Handle Clerk authentication"""
+def get_clerk_token() -> str:
+    """Get or refresh Clerk authentication token"""
+    global auth_token, token_expires_at, user_id
     
-    def __init__(self):
-        self.headers = {
-            "Authorization": f"Bearer {CLERK_SECRET_KEY}",
-            "Content-Type": "application/json"
-        }
+    # Return cached token if still valid (with 10s buffer)
+    if auth_token and time.time() < (token_expires_at - 10):
+        return auth_token
     
-    def create_or_get_user(self, email: str, password: str) -> Optional[str]:
-        """Create a user or get existing user ID"""
-        try:
-            # Try to create user
-            response = requests.post(
-                f"{CLERK_API_BASE}/users",
-                headers=self.headers,
+    try:
+        headers = {"Authorization": f"Bearer {CLERK_SECRET_KEY}", "Content-Type": "application/json"}
+        
+        # Step 1: Find or create user
+        print(f"🔐 Authenticating with Clerk as {TEST_EMAIL}...")
+        users_resp = requests.get(
+            f"{CLERK_API_URL}/users",
+            headers=headers,
+            params={"email_address": [TEST_EMAIL]}
+        )
+        
+        if users_resp.status_code == 200 and users_resp.json():
+            user_id = users_resp.json()[0]["id"]
+            print(f"   Found existing user: {user_id}")
+        else:
+            # Create user
+            create_resp = requests.post(
+                f"{CLERK_API_URL}/users",
+                headers=headers,
                 json={
-                    "email_address": [email],
-                    "password": password
+                    "email_address": [TEST_EMAIL],
+                    "password": TEST_PASSWORD,
+                    "skip_password_checks": True,
+                    "skip_password_requirement": False
                 }
             )
-            
-            if response.status_code == 200:
-                user_id = response.json()["id"]
-                log_success(f"Created user: {email} (ID: {user_id})")
-                return user_id
-            elif response.status_code == 422:
-                # User exists, fetch it
-                log_info(f"User {email} already exists, fetching...")
-                response = requests.get(
-                    f"{CLERK_API_BASE}/users",
-                    headers=self.headers,
-                    params={"email_address": [email]}
-                )
-                if response.status_code == 200:
-                    users = response.json()
-                    if users and len(users) > 0:
-                        user_id = users[0]["id"]
-                        log_success(f"Found existing user: {email} (ID: {user_id})")
-                        return user_id
-            
-            log_error(f"Failed to create/get user: {response.status_code} - {response.text}")
-            return None
-        except Exception as e:
-            log_error(f"Exception creating/getting user: {e}")
-            return None
-    
-    def create_session(self, user_id: str) -> Optional[str]:
-        """Create a session for the user"""
-        try:
-            response = requests.post(
-                f"{CLERK_API_BASE}/sessions",
-                headers=self.headers,
-                json={"user_id": user_id}
-            )
-            
-            if response.status_code == 200:
-                session_id = response.json()["id"]
-                log_success(f"Created session: {session_id}")
-                return session_id
-            
-            log_error(f"Failed to create session: {response.status_code} - {response.text}")
-            return None
-        except Exception as e:
-            log_error(f"Exception creating session: {e}")
-            return None
-    
-    def mint_jwt(self, session_id: str) -> Optional[str]:
-        """Mint a JWT token for the session"""
-        try:
-            response = requests.post(
-                f"{CLERK_API_BASE}/sessions/{session_id}/tokens",
-                headers=self.headers,
-                json={}
-            )
-            
-            if response.status_code == 200:
-                jwt = response.json()["jwt"]
-                log_success(f"Minted JWT token (expires in ~60s)")
-                return jwt
-            
-            log_error(f"Failed to mint JWT: {response.status_code} - {response.text}")
-            return None
-        except Exception as e:
-            log_error(f"Exception minting JWT: {e}")
-            return None
-    
-    def get_auth_token(self, email: str, password: str) -> Optional[str]:
-        """Complete auth flow and return JWT"""
-        log_info(f"Authenticating user: {email}")
-        user_id = self.create_or_get_user(email, password)
-        if not user_id:
-            return None
+            if create_resp.status_code not in [200, 201]:
+                raise Exception(f"Failed to create user: {create_resp.status_code} {create_resp.text}")
+            user_id = create_resp.json()["id"]
+            print(f"   Created new user: {user_id}")
         
-        session_id = self.create_session(user_id)
-        if not session_id:
-            return None
+        # Step 2: Create session
+        session_resp = requests.post(
+            f"{CLERK_API_URL}/sessions",
+            headers=headers,
+            json={"user_id": user_id}
+        )
+        if session_resp.status_code not in [200, 201]:
+            raise Exception(f"Failed to create session: {session_resp.status_code} {session_resp.text}")
+        session_id = session_resp.json()["id"]
+        print(f"   Created session: {session_id}")
         
-        jwt = self.mint_jwt(session_id)
-        return jwt
+        # Step 3: Mint token
+        token_resp = requests.post(
+            f"{CLERK_API_URL}/sessions/{session_id}/tokens",
+            headers=headers
+        )
+        if token_resp.status_code not in [200, 201]:
+            raise Exception(f"Failed to mint token: {token_resp.status_code} {token_resp.text}")
+        
+        auth_token = token_resp.json()["jwt"]
+        token_expires_at = time.time() + 50  # Tokens expire in ~60s, refresh at 50s
+        print(f"   ✓ Authentication successful (token valid for ~50s)")
+        return auth_token
+        
+    except Exception as e:
+        print(f"❌ Authentication failed: {e}")
+        sys.exit(1)
 
-def test_health():
-    """Test 1: GET /api/health (no auth required)"""
-    log_test("GET /api/health (no auth)")
+
+def api_call(method: str, endpoint: str, auth: bool = True, **kwargs) -> requests.Response:
+    """Make API call with optional authentication"""
+    url = f"{BASE_URL}/{endpoint.lstrip('/')}"
+    headers = kwargs.pop("headers", {})
     
+    if auth:
+        token = get_clerk_token()
+        headers["Authorization"] = f"Bearer {token}"
+    
+    if "json" in kwargs:
+        headers["Content-Type"] = "application/json"
+    
+    return requests.request(method, url, headers=headers, **kwargs)
+
+
+def test_1_health_and_auth():
+    """Test 1: Health check and authentication"""
     try:
-        response = requests.get(f"{BASE_URL}/health")
+        # Health check (no auth)
+        resp = api_call("GET", "/health", auth=False)
+        if resp.status_code == 200 and resp.json().get("status") == "ok":
+            log_test("1a. Health Check", "PASS", "GET /api/health returns {status:'ok'}")
+        else:
+            log_test("1a. Health Check", "FAIL", f"Expected 200 with status:ok, got {resp.status_code}: {resp.text}")
+            return False
         
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("status") == "ok":
-                log_success(f"Health check passed: {data}")
-                return True
+        # Unauthenticated dashboard access
+        resp = api_call("GET", "/dashboard", auth=False)
+        if resp.status_code == 401:
+            log_test("1b. Unauthenticated Access", "PASS", "GET /api/dashboard without auth returns 401")
+        else:
+            log_test("1b. Unauthenticated Access", "FAIL", f"Expected 401, got {resp.status_code}")
+            return False
+        
+        return True
+    except Exception as e:
+        log_test("1. Health & Auth", "FAIL", str(e))
+        return False
+
+
+def test_2_live_cost_engine():
+    """Test 2: Live cost engine - most critical test"""
+    try:
+        # Reset to get clean seed data
+        print("\n🔄 Resetting database to seed state...")
+        resp = api_call("POST", "/reset", json={})
+        if resp.status_code != 200:
+            log_test("2. Live Cost Engine", "FAIL", f"Reset failed: {resp.status_code} {resp.text}")
+            return False
+        print("   ✓ Database reset complete")
+        
+        # Get dashboard stats
+        resp = api_call("GET", "/dashboard")
+        if resp.status_code != 200:
+            log_test("2a. Dashboard Fetch", "FAIL", f"GET /api/dashboard failed: {resp.status_code}")
+            return False
+        
+        dash = resp.json()
+        total_from_dashboard = dash["stats"]["totalMonthlyCost"]
+        budget_status = dash["budget"]["status"]
+        forecast_expected = dash["forecast"]["expectedCost"]
+        trend = dash["trend"]
+        
+        log_test("2a. Dashboard Fetch", "PASS", 
+                f"totalMonthlyCost={total_from_dashboard}, budget.status={budget_status}, forecast.expectedCost={forecast_expected}")
+        
+        # Get all active resources and sum their costs
+        resp = api_call("GET", "/resources", params={"status": "Active", "pageSize": 100})
+        if resp.status_code != 200:
+            log_test("2b. Resources Fetch", "FAIL", f"GET /api/resources failed: {resp.status_code}")
+            return False
+        
+        resources = resp.json()["items"]
+        sum_of_active_costs = sum(r["monthly_cost"] for r in resources)
+        
+        # Compare (rounding to nearest integer)
+        if round(sum_of_active_costs) == round(total_from_dashboard):
+            log_test("2b. Cost Calculation", "PASS", 
+                    f"SUM of active resources ({round(sum_of_active_costs)}) EQUALS dashboard total ({round(total_from_dashboard)})")
+        else:
+            log_test("2b. Cost Calculation", "FAIL", 
+                    f"SUM of active resources ({round(sum_of_active_costs)}) != dashboard total ({round(total_from_dashboard)})")
+            return False
+        
+        # Verify budget status is valid
+        valid_statuses = ["Healthy", "Warning", "Critical", "Exceeded"]
+        if budget_status in valid_statuses:
+            log_test("2c. Budget Status", "PASS", f"budget.status='{budget_status}' is valid")
+        else:
+            log_test("2c. Budget Status", "FAIL", f"budget.status='{budget_status}' not in {valid_statuses}")
+            return False
+        
+        # Verify forecast = average of last 3 trend totals (±1 rounding)
+        if len(trend) >= 3:
+            last_3_totals = [t["total"] for t in trend[-3:]]
+            expected_forecast = sum(last_3_totals) / len(last_3_totals)
+            if abs(forecast_expected - expected_forecast) <= 1:
+                log_test("2d. Forecast Calculation", "PASS", 
+                        f"forecast.expectedCost ({forecast_expected}) matches avg of last 3 months ({round(expected_forecast)})")
             else:
-                log_error(f"Unexpected response: {data}")
+                log_test("2d. Forecast Calculation", "FAIL", 
+                        f"forecast.expectedCost ({forecast_expected}) != avg of last 3 ({round(expected_forecast)})")
                 return False
         else:
-            log_error(f"Expected 200, got {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_error(f"Exception: {e}")
-        return False
-
-def test_dashboard_unauth():
-    """Test 2: GET /api/dashboard (unauthenticated) -> 401"""
-    log_test("GET /api/dashboard (unauthenticated)")
-    
-    try:
-        response = requests.get(f"{BASE_URL}/dashboard")
-        
-        if response.status_code == 401:
-            log_success(f"Correctly returned 401 for unauthenticated request")
-            return True
-        else:
-            log_error(f"Expected 401, got {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_error(f"Exception: {e}")
-        return False
-
-def test_dashboard_auth(jwt: str):
-    """Test 3: GET /api/dashboard (authenticated)"""
-    log_test("GET /api/dashboard (authenticated)")
-    
-    try:
-        headers = {"Authorization": f"Bearer {jwt}"}
-        response = requests.get(f"{BASE_URL}/dashboard", headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Verify required fields
-            required_fields = ["stats", "services", "trend", "serviceBreakdown", 
-                             "forecast", "budget", "recommendations", "currency", 
-                             "dataSource", "meta", "workspace"]
-            
-            missing = [f for f in required_fields if f not in data]
-            if missing:
-                log_error(f"Missing required fields: {missing}")
-                return False
-            
-            # Verify stats structure
-            stats = data.get("stats", {})
-            stats_fields = ["totalMonthlyCost", "totalResources", "activeServices", 
-                          "potentialSavings", "budgetUsage", "growth"]
-            missing_stats = [f for f in stats_fields if f not in stats]
-            if missing_stats:
-                log_error(f"Missing stats fields: {missing_stats}")
-                return False
-            
-            # Verify meta structure
-            meta = data.get("meta", {})
-            if "azureConnected" not in meta or "emailConfigured" not in meta:
-                log_error(f"Missing meta fields: {meta}")
-                return False
-            
-            # Verify workspace structure
-            workspace = data.get("workspace", {})
-            if "isOrg" not in workspace or "tenantId" not in workspace:
-                log_error(f"Missing workspace fields: {workspace}")
-                return False
-            
-            # Verify currency is INR for demo
-            if data.get("currency") != "INR":
-                log_error(f"Expected currency INR, got {data.get('currency')}")
-                return False
-            
-            # Verify dataSource is demo initially
-            if data.get("dataSource") != "demo":
-                log_error(f"Expected dataSource demo, got {data.get('dataSource')}")
-                return False
-            
-            log_success(f"Dashboard returned valid data structure")
-            log_info(f"Stats: totalMonthlyCost={stats.get('totalMonthlyCost')}, totalResources={stats.get('totalResources')}")
-            log_info(f"Meta: azureConnected={meta.get('azureConnected')}, emailConfigured={meta.get('emailConfigured')}")
-            return True
-        else:
-            log_error(f"Expected 200, got {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_error(f"Exception: {e}")
-        return False
-
-def test_settings(jwt: str):
-    """Test 4: GET /api/settings"""
-    log_test("GET /api/settings")
-    
-    try:
-        headers = {"Authorization": f"Bearer {jwt}"}
-        response = requests.get(f"{BASE_URL}/settings", headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Verify structure
-            if "azure" not in data or "email" not in data or "rules" not in data:
-                log_error(f"Missing required fields in settings: {data.keys()}")
-                return False
-            
-            # Verify azure.connected is false initially
-            if data["azure"].get("connected") != False:
-                log_error(f"Expected azure.connected=false, got {data['azure'].get('connected')}")
-                return False
-            
-            # Note: email.configured may be true if tests ran before, that's OK
-            email_configured = data["email"].get("configured", False)
-            log_info(f"Email configured: {email_configured}")
-            
-            # Verify default rules (or custom if already set)
-            rules = data.get("rules", {})
-            log_info(f"Rules: idleCostThreshold={rules.get('idleCostThreshold')}, spikePct={rules.get('spikePct')}, budgetWarnPct={rules.get('budgetWarnPct')}")
-            
-            # Verify no secrets in response
-            response_str = json.dumps(data)
-            if "clientSecret" in response_str or "resendApiKey" in response_str:
-                log_error(f"Secrets leaked in settings response!")
-                return False
-            
-            log_success(f"Settings returned valid data with no secrets leaked")
-            return True
-        else:
-            log_error(f"Expected 200, got {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_error(f"Exception: {e}")
-        return False
-
-def test_rules_update(jwt: str):
-    """Test 5: POST /api/settings/rules with validation"""
-    log_test("POST /api/settings/rules")
-    
-    try:
-        headers = {"Authorization": f"Bearer {jwt}", "Content-Type": "application/json"}
-        
-        # Test valid update
-        log_info("Testing valid rules update...")
-        response = requests.post(
-            f"{BASE_URL}/settings/rules",
-            headers=headers,
-            json={
-                "idleCostThreshold": 1000,
-                "spikePct": 10,
-                "budgetWarnPct": 70
-            }
-        )
-        
-        if response.status_code != 200:
-            log_error(f"Valid rules update failed: {response.status_code} - {response.text}")
-            return False
-        
-        data = response.json()
-        if not data.get("saved"):
-            log_error(f"Expected saved=true, got {data}")
-            return False
-        
-        rules = data.get("rules", {})
-        if rules.get("idleCostThreshold") != 1000 or rules.get("spikePct") != 10 or rules.get("budgetWarnPct") != 70:
-            log_error(f"Rules not updated correctly: {rules}")
-            return False
-        
-        log_success(f"Valid rules update succeeded")
-        
-        # Test invalid budgetWarnPct (>100)
-        log_info("Testing invalid budgetWarnPct=150...")
-        response = requests.post(
-            f"{BASE_URL}/settings/rules",
-            headers=headers,
-            json={"budgetWarnPct": 150}
-        )
-        
-        if response.status_code != 400:
-            log_error(f"Expected 400 for invalid budgetWarnPct, got {response.status_code}")
-            return False
-        
-        log_success(f"Invalid budgetWarnPct correctly rejected with 400")
-        
-        # Test invalid spikePct (non-numeric)
-        log_info("Testing invalid spikePct='abc'...")
-        response = requests.post(
-            f"{BASE_URL}/settings/rules",
-            headers=headers,
-            json={"spikePct": "abc"}
-        )
-        
-        if response.status_code != 400:
-            log_error(f"Expected 400 for invalid spikePct, got {response.status_code}")
-            return False
-        
-        log_success(f"Invalid spikePct correctly rejected with 400")
+            log_test("2d. Forecast Calculation", "WARN", f"Not enough trend data (only {len(trend)} months)")
         
         return True
     except Exception as e:
-        log_error(f"Exception: {e}")
+        log_test("2. Live Cost Engine", "FAIL", str(e))
         return False
 
-def test_recommendations(jwt: str):
-    """Test 6: GET /api/recommendations (should include rule-based items)"""
-    log_test("GET /api/recommendations")
+
+def test_3_resource_create():
+    """Test 3: Resource creation with validation"""
+    global created_resource_id
     
     try:
-        headers = {"Authorization": f"Bearer {jwt}"}
-        response = requests.get(f"{BASE_URL}/recommendations", headers=headers)
+        # Get initial dashboard total
+        resp = api_call("GET", "/dashboard")
+        initial_total = resp.json()["stats"]["totalMonthlyCost"]
         
-        if response.status_code == 200:
-            data = response.json()
-            
-            if not isinstance(data, list):
-                log_error(f"Expected array, got {type(data)}")
-                return False
-            
-            # Check for rule_based recommendations
-            rule_based = [r for r in data if r.get("rule_based") == True]
-            
-            if len(rule_based) > 0:
-                log_success(f"Found {len(rule_based)} rule-based recommendations")
-                for rec in rule_based[:2]:  # Show first 2
-                    log_info(f"  - {rec.get('title')} (savings: {rec.get('potential_savings')})")
+        # Create a new resource
+        new_resource = {
+            "resource_name": "qa-test-vm",
+            "service_type": "Azure Virtual Machine",
+            "region": "East US",
+            "monthly_cost": 5000,
+            "status": "Active",
+            "owner": "qa"
+        }
+        
+        resp = api_call("POST", "/resources", json=new_resource)
+        if resp.status_code != 201:
+            log_test("3a. Resource Create", "FAIL", f"Expected 201, got {resp.status_code}: {resp.text}")
+            return False
+        
+        created = resp.json()
+        created_resource_id = created.get("id")
+        
+        if not created_resource_id:
+            log_test("3a. Resource Create", "FAIL", "No 'id' in response")
+            return False
+        
+        log_test("3a. Resource Create", "PASS", f"Created resource with id={created_resource_id}")
+        
+        # Verify dashboard total increased by 5000
+        time.sleep(0.5)  # Brief pause
+        resp = api_call("GET", "/dashboard")
+        new_total = resp.json()["stats"]["totalMonthlyCost"]
+        
+        if new_total == initial_total + 5000:
+            log_test("3b. Cost Update", "PASS", f"Dashboard total increased by exactly 5000 ({initial_total} → {new_total})")
+        else:
+            log_test("3b. Cost Update", "FAIL", 
+                    f"Expected increase of 5000, got {new_total - initial_total} ({initial_total} → {new_total})")
+            return False
+        
+        # Validation tests
+        validations = [
+            ({"resource_name": "", "service_type": "Azure VM", "region": "East US", "monthly_cost": 100, "status": "Active"}, 
+             "empty resource_name"),
+            ({"resource_name": "test", "service_type": "Azure VM", "region": "East US", "monthly_cost": 0, "status": "Active"}, 
+             "monthly_cost=0"),
+            ({"resource_name": "test", "service_type": "Azure VM", "region": "East US", "monthly_cost": -100, "status": "Active"}, 
+             "negative monthly_cost"),
+            ({"resource_name": "test", "service_type": "Azure VM", "region": "East US", "monthly_cost": 100, "status": "Foo"}, 
+             "invalid status"),
+            ({"resource_name": "test", "region": "East US", "monthly_cost": 100, "status": "Active"}, 
+             "missing service_type"),
+        ]
+        
+        all_validations_passed = True
+        for invalid_data, reason in validations:
+            resp = api_call("POST", "/resources", json=invalid_data)
+            if resp.status_code == 400:
+                print(f"   ✓ Validation: {reason} → 400")
             else:
-                log_info(f"No rule-based recommendations found (may be due to random data)")
-            
-            log_success(f"Recommendations endpoint returned {len(data)} items")
-            return True
+                print(f"   ✗ Validation: {reason} → {resp.status_code} (expected 400)")
+                all_validations_passed = False
+        
+        if all_validations_passed:
+            log_test("3c. Validation", "PASS", "All 5 validation scenarios return 400")
         else:
-            log_error(f"Expected 200, got {response.status_code}: {response.text}")
+            log_test("3c. Validation", "FAIL", "Some validations did not return 400")
             return False
-    except Exception as e:
-        log_error(f"Exception: {e}")
-        return False
-
-def test_email_settings(jwt: str):
-    """Test 7: POST /api/settings/email with validation"""
-    log_test("POST /api/settings/email")
-    
-    try:
-        headers = {"Authorization": f"Bearer {jwt}", "Content-Type": "application/json"}
-        
-        # Test invalid key format
-        log_info("Testing invalid Resend key format...")
-        response = requests.post(
-            f"{BASE_URL}/settings/email",
-            headers=headers,
-            json={
-                "apiKey": "invalid_format",
-                "recipient": "test@example.com"
-            }
-        )
-        
-        if response.status_code != 400:
-            log_error(f"Expected 400 for invalid key format, got {response.status_code}")
-            return False
-        
-        log_success(f"Invalid key format correctly rejected with 400")
-        
-        # Test valid key format (fake key)
-        log_info("Testing valid key format (fake key)...")
-        response = requests.post(
-            f"{BASE_URL}/settings/email",
-            headers=headers,
-            json={
-                "apiKey": "re_fakeKeyForTesting123456",
-                "recipient": "tester@example.com"
-            }
-        )
-        
-        if response.status_code != 200:
-            log_error(f"Expected 200 for valid key format, got {response.status_code}: {response.text}")
-            return False
-        
-        data = response.json()
-        if not data.get("saved"):
-            log_error(f"Expected saved=true, got {data}")
-            return False
-        
-        log_success(f"Valid email settings saved")
-        
-        # Verify settings show configured=true and key is masked
-        log_info("Verifying email settings are masked...")
-        response = requests.get(f"{BASE_URL}/settings", headers=headers)
-        
-        if response.status_code != 200:
-            log_error(f"Failed to get settings: {response.status_code}")
-            return False
-        
-        data = response.json()
-        email = data.get("email", {})
-        
-        if not email.get("configured"):
-            log_error(f"Expected email.configured=true, got {email.get('configured')}")
-            return False
-        
-        if email.get("recipient") != "tester@example.com":
-            log_error(f"Expected recipient=tester@example.com, got {email.get('recipient')}")
-            return False
-        
-        if email.get("keyMask") != "re_••••••••":
-            log_error(f"Expected masked key, got {email.get('keyMask')}")
-            return False
-        
-        # Verify raw key is NOT in response
-        response_str = json.dumps(data)
-        if "re_fakeKeyForTesting123456" in response_str:
-            log_error(f"Raw Resend key leaked in settings response!")
-            return False
-        
-        log_success(f"Email settings correctly masked, no key leak")
-        
-        # Test invalid recipient email
-        log_info("Testing invalid recipient email...")
-        response = requests.post(
-            f"{BASE_URL}/settings/email",
-            headers=headers,
-            json={"recipient": "not-an-email"}
-        )
-        
-        if response.status_code != 400:
-            log_error(f"Expected 400 for invalid email, got {response.status_code}")
-            return False
-        
-        log_success(f"Invalid recipient email correctly rejected with 400")
         
         return True
     except Exception as e:
-        log_error(f"Exception: {e}")
+        log_test("3. Resource Create", "FAIL", str(e))
         return False
 
-def test_email_test_send(jwt: str):
-    """Test 8: POST /api/settings/email/test (should fail with fake key)"""
-    log_test("POST /api/settings/email/test")
-    
-    try:
-        headers = {"Authorization": f"Bearer {jwt}", "Content-Type": "application/json"}
-        response = requests.post(f"{BASE_URL}/settings/email/test", headers=headers, json={})
-        
-        # Should return 502 with fake key (Resend rejects it)
-        if response.status_code == 502:
-            # Response might be JSON or HTML (from proxy/gateway)
-            try:
-                data = response.json()
-                error = data.get("error", "")
-                
-                # Verify safe error message (no key leak)
-                if "re_fakeKeyForTesting123456" in error:
-                    log_error(f"Resend key leaked in error message!")
-                    return False
-                
-                log_success(f"Test send correctly failed with 502 and safe error: {error}")
-            except (ValueError, KeyError):
-                # HTML error page from gateway is also acceptable for 502
-                log_success(f"Test send correctly failed with 502 (gateway error page)")
-            
-            # Verify no key leak in response text
-            if "re_fakeKeyForTesting123456" in response.text:
-                log_error(f"Resend key leaked in error response!")
-                return False
-            
-            return True
-        else:
-            log_error(f"Expected 502, got {response.status_code}: {response.text[:500]}")
-            return False
-    except Exception as e:
-        log_error(f"Exception: {e}")
-        return False
 
-def test_budget_alert_email(jwt: str):
-    """Test 9: Budget alert email attempt"""
-    log_test("Budget alert email (with fake Resend key)")
+def test_4_resource_update():
+    """Test 4: Resource update"""
+    global created_resource_id
+    
+    if not created_resource_id:
+        log_test("4. Resource Update", "FAIL", "No resource ID from previous test")
+        return False
     
     try:
-        headers = {"Authorization": f"Bearer {jwt}", "Content-Type": "application/json"}
+        # Get current dashboard total
+        resp = api_call("GET", "/dashboard")
+        initial_total = resp.json()["stats"]["totalMonthlyCost"]
         
-        # Set budget to 1000 (spend should exceed it)
-        log_info("Setting budget to 1000...")
-        response = requests.post(
-            f"{BASE_URL}/budget",
-            headers=headers,
-            json={"monthly_budget": 1000}
-        )
-        
-        if response.status_code != 200:
-            log_error(f"Failed to set budget: {response.status_code} - {response.text}")
+        # Update resource cost from 5000 to 9000
+        resp = api_call("PUT", f"/resources/{created_resource_id}", json={"monthly_cost": 9000})
+        if resp.status_code != 200:
+            log_test("4a. Resource Update", "FAIL", f"Expected 200, got {resp.status_code}: {resp.text}")
             return False
         
-        log_success(f"Budget set to 1000")
+        log_test("4a. Resource Update", "PASS", f"Updated resource {created_resource_id} cost to 9000")
         
-        # Get dashboard (should trigger alert attempt)
-        log_info("Getting dashboard (should trigger alert)...")
-        response = requests.get(f"{BASE_URL}/dashboard", headers=headers)
+        # Verify dashboard reflects +4000 delta
+        time.sleep(0.5)
+        resp = api_call("GET", "/dashboard")
+        new_total = resp.json()["stats"]["totalMonthlyCost"]
         
-        if response.status_code != 200:
-            log_error(f"Dashboard request failed: {response.status_code} - {response.text}")
-            return False
-        
-        data = response.json()
-        
-        # Verify budget usage is capped at 100
-        budget = data.get("budget", {})
-        if budget.get("usage_pct") != 100:
-            log_error(f"Expected usage_pct=100, got {budget.get('usage_pct')}")
-            return False
-        
-        log_success(f"Budget usage correctly capped at 100%")
-        
-        # Verify emailAlert shows failure (fake key)
-        email_alert = data.get("emailAlert")
-        if email_alert is None:
-            log_info(f"No emailAlert in response (email not configured or already sent)")
-        elif email_alert.get("sent") == False:
-            log_success(f"Email alert correctly failed with fake key: {email_alert.get('error')}")
+        if new_total == initial_total + 4000:
+            log_test("4b. Cost Delta", "PASS", f"Dashboard reflects +4000 delta ({initial_total} → {new_total})")
         else:
-            log_error(f"Unexpected emailAlert: {email_alert}")
+            log_test("4b. Cost Delta", "FAIL", 
+                    f"Expected +4000, got {new_total - initial_total} ({initial_total} → {new_total})")
             return False
         
-        # Verify alert record in settings
-        log_info("Checking alert record in settings...")
-        response = requests.get(f"{BASE_URL}/settings", headers=headers)
-        
-        if response.status_code != 200:
-            log_error(f"Failed to get settings: {response.status_code}")
-            return False
-        
-        data = response.json()
-        alerts = data.get("alerts", [])
-        
-        if len(alerts) > 0:
-            log_success(f"Found {len(alerts)} alert record(s) in settings")
-            latest = alerts[0]
-            log_info(f"  Latest alert: threshold={latest.get('threshold')}, error={latest.get('error')}")
+        # Test 404 for nonexistent resource
+        resp = api_call("PUT", "/resources/nonexistent-id-12345", json={"monthly_cost": 1000})
+        if resp.status_code == 404:
+            log_test("4c. Update 404", "PASS", "PUT nonexistent resource returns 404")
         else:
-            log_info(f"No alert records found (may not have triggered)")
+            log_test("4c. Update 404", "FAIL", f"Expected 404, got {resp.status_code}")
+            return False
+        
+        # Test validation: negative cost
+        resp = api_call("PUT", f"/resources/{created_resource_id}", json={"monthly_cost": -5})
+        if resp.status_code == 400:
+            log_test("4d. Update Validation", "PASS", "PUT with negative cost returns 400")
+        else:
+            log_test("4d. Update Validation", "FAIL", f"Expected 400, got {resp.status_code}")
+            return False
         
         return True
     except Exception as e:
-        log_error(f"Exception: {e}")
+        log_test("4. Resource Update", "FAIL", str(e))
         return False
 
-def test_budget_restore(jwt: str):
-    """Test 10: Restore budget to 50000"""
-    log_test("Restore budget to 50000")
+
+def test_5_resource_delete():
+    """Test 5: Resource deletion"""
+    global created_resource_id
+    
+    if not created_resource_id:
+        log_test("5. Resource Delete", "FAIL", "No resource ID from previous test")
+        return False
     
     try:
-        headers = {"Authorization": f"Bearer {jwt}", "Content-Type": "application/json"}
+        # Get current dashboard total
+        resp = api_call("GET", "/dashboard")
+        initial_total = resp.json()["stats"]["totalMonthlyCost"]
         
-        response = requests.post(
-            f"{BASE_URL}/budget",
-            headers=headers,
-            json={"monthly_budget": 50000}
-        )
-        
-        if response.status_code != 200:
-            log_error(f"Failed to restore budget: {response.status_code} - {response.text}")
+        # Delete resource
+        resp = api_call("DELETE", f"/resources/{created_resource_id}")
+        if resp.status_code != 200:
+            log_test("5a. Resource Delete", "FAIL", f"Expected 200, got {resp.status_code}: {resp.text}")
             return False
         
-        log_success(f"Budget restored to 50000")
+        if resp.json().get("ok") != True:
+            log_test("5a. Resource Delete", "FAIL", f"Expected {{ok:true}}, got {resp.json()}")
+            return False
+        
+        log_test("5a. Resource Delete", "PASS", f"Deleted resource {created_resource_id}")
+        
+        # Verify dashboard total decreased by 9000
+        time.sleep(0.5)
+        resp = api_call("GET", "/dashboard")
+        new_total = resp.json()["stats"]["totalMonthlyCost"]
+        
+        if new_total == initial_total - 9000:
+            log_test("5b. Cost Decrease", "PASS", f"Dashboard total decreased by 9000 ({initial_total} → {new_total})")
+        else:
+            log_test("5b. Cost Decrease", "FAIL", 
+                    f"Expected -9000, got {new_total - initial_total} ({initial_total} → {new_total})")
+            return False
+        
+        # Test 404 for nonexistent resource
+        resp = api_call("DELETE", "/resources/nonexistent-id-12345")
+        if resp.status_code == 404:
+            log_test("5c. Delete 404", "PASS", "DELETE nonexistent resource returns 404")
+        else:
+            log_test("5c. Delete 404", "FAIL", f"Expected 404, got {resp.status_code}")
+            return False
+        
+        created_resource_id = None  # Clear for cleanup
+        return True
+    except Exception as e:
+        log_test("5. Resource Delete", "FAIL", str(e))
+        return False
+
+
+def test_6_search_filter_pagination():
+    """Test 6: Search, filter, and pagination"""
+    try:
+        # Search (case-insensitive)
+        resp = api_call("GET", "/resources", params={"search": "vm"})
+        if resp.status_code != 200:
+            log_test("6a. Search", "FAIL", f"Search failed: {resp.status_code}")
+            return False
+        
+        items = resp.json()["items"]
+        # Verify search matches name/service/region/owner
+        if items:
+            log_test("6a. Search", "PASS", f"Search 'vm' returned {len(items)} results")
+        else:
+            log_test("6a. Search", "WARN", "Search 'vm' returned no results")
+        
+        # Filter by service
+        resp = api_call("GET", "/resources", params={"service": "Azure Storage"})
+        if resp.status_code != 200:
+            log_test("6b. Service Filter", "FAIL", f"Service filter failed: {resp.status_code}")
+            return False
+        
+        items = resp.json()["items"]
+        if all(r["service_type"] == "Azure Storage" for r in items):
+            log_test("6b. Service Filter", "PASS", f"Service filter returned {len(items)} Azure Storage resources")
+        else:
+            log_test("6b. Service Filter", "FAIL", "Service filter returned wrong service types")
+            return False
+        
+        # Filter by status
+        resp = api_call("GET", "/resources", params={"status": "Idle"})
+        if resp.status_code != 200:
+            log_test("6c. Status Filter", "FAIL", f"Status filter failed: {resp.status_code}")
+            return False
+        
+        items = resp.json()["items"]
+        if all(r["status"] == "Idle" for r in items):
+            log_test("6c. Status Filter", "PASS", f"Status filter returned {len(items)} Idle resources")
+        else:
+            log_test("6c. Status Filter", "FAIL", "Status filter returned wrong statuses")
+            return False
+        
+        # Cost range filter
+        resp = api_call("GET", "/resources", params={"minCost": 1000, "maxCost": 3000})
+        if resp.status_code != 200:
+            log_test("6d. Cost Range Filter", "FAIL", f"Cost filter failed: {resp.status_code}")
+            return False
+        
+        items = resp.json()["items"]
+        if all(1000 <= r["monthly_cost"] <= 3000 for r in items):
+            log_test("6d. Cost Range Filter", "PASS", f"Cost range filter returned {len(items)} resources in range")
+        else:
+            log_test("6d. Cost Range Filter", "FAIL", "Cost filter returned resources outside range")
+            return False
+        
+        # Pagination
+        resp = api_call("GET", "/resources", params={"page": 2, "pageSize": 5})
+        if resp.status_code != 200:
+            log_test("6e. Pagination", "FAIL", f"Pagination failed: {resp.status_code}")
+            return False
+        
+        data = resp.json()
+        required_fields = ["items", "total", "page", "pages", "facets", "catalog", "allRegions"]
+        if all(field in data for field in required_fields):
+            log_test("6e. Pagination", "PASS", 
+                    f"Page 2 returned {len(data['items'])} items, total={data['total']}, pages={data['pages']}")
+        else:
+            log_test("6e. Pagination", "FAIL", f"Missing required fields: {required_fields}")
+            return False
+        
+        return True
+    except Exception as e:
+        log_test("6. Search/Filter/Pagination", "FAIL", str(e))
+        return False
+
+
+def test_7_notifications():
+    """Test 7: Notifications"""
+    try:
+        # Get initial notifications
+        resp = api_call("GET", "/notifications")
+        if resp.status_code != 200:
+            log_test("7a. Get Notifications", "FAIL", f"GET failed: {resp.status_code}")
+            return False
+        
+        initial_data = resp.json()
+        initial_count = len(initial_data["items"])
+        initial_unread = initial_data["unread"]
+        
+        log_test("7a. Get Notifications", "PASS", 
+                f"Retrieved {initial_count} notifications, {initial_unread} unread")
+        
+        # Create a resource to trigger notification
+        resp = api_call("POST", "/resources", json={
+            "resource_name": "notification-test-vm",
+            "service_type": "Azure Virtual Machine",
+            "region": "East US",
+            "monthly_cost": 1000,
+            "status": "Active",
+            "owner": "test"
+        })
+        
+        if resp.status_code != 201:
+            log_test("7b. Trigger Notification", "FAIL", f"Resource creation failed: {resp.status_code}")
+            return False
+        
+        test_resource_id = resp.json()["id"]
+        
+        # Check for new notification
+        time.sleep(0.5)
+        resp = api_call("GET", "/notifications")
+        new_data = resp.json()
+        new_count = len(new_data["items"])
+        
+        # Look for "Resource added" notification
+        has_resource_notif = any("Resource added" in n.get("title", "") for n in new_data["items"])
+        
+        if has_resource_notif:
+            log_test("7b. Trigger Notification", "PASS", "New 'Resource added' notification created")
+        else:
+            log_test("7b. Trigger Notification", "FAIL", "No 'Resource added' notification found")
+            # Clean up
+            api_call("DELETE", f"/resources/{test_resource_id}")
+            return False
+        
+        # Mark all as read
+        resp = api_call("POST", "/notifications/read-all")
+        if resp.status_code != 200 or resp.json().get("ok") != True:
+            log_test("7c. Mark Read", "FAIL", f"read-all failed: {resp.status_code}")
+            api_call("DELETE", f"/resources/{test_resource_id}")
+            return False
+        
+        # Verify unread count is 0
+        time.sleep(0.5)
+        resp = api_call("GET", "/notifications")
+        final_unread = resp.json()["unread"]
+        
+        if final_unread == 0:
+            log_test("7c. Mark Read", "PASS", "All notifications marked as read, unread=0")
+        else:
+            log_test("7c. Mark Read", "FAIL", f"Expected unread=0, got {final_unread}")
+            api_call("DELETE", f"/resources/{test_resource_id}")
+            return False
+        
+        # Clean up test resource
+        api_call("DELETE", f"/resources/{test_resource_id}")
+        return True
+    except Exception as e:
+        log_test("7. Notifications", "FAIL", str(e))
+        return False
+
+
+def test_8_audit():
+    """Test 8: Audit logs"""
+    try:
+        resp = api_call("GET", "/audit")
+        if resp.status_code != 200:
+            log_test("8. Audit Logs", "FAIL", f"GET /api/audit failed: {resp.status_code}")
+            return False
+        
+        logs = resp.json()
+        
+        if not isinstance(logs, list):
+            log_test("8. Audit Logs", "FAIL", "Response is not an array")
+            return False
+        
+        # Check for required fields
+        required_fields = ["action", "entity", "created_at"]
+        if logs and all(all(field in log for field in required_fields) for log in logs[:5]):
+            # Look for recent actions
+            actions = [log["action"] for log in logs[:20]]
+            has_create = "create" in actions
+            has_delete = "delete" in actions
+            
+            log_test("8. Audit Logs", "PASS", 
+                    f"Retrieved {len(logs)} audit entries (create={has_create}, delete={has_delete})")
+        else:
+            log_test("8. Audit Logs", "FAIL", "Missing required fields in audit logs")
+            return False
+        
+        return True
+    except Exception as e:
+        log_test("8. Audit Logs", "FAIL", str(e))
+        return False
+
+
+def test_9_budget():
+    """Test 9: Budget update"""
+    try:
+        # Update budget
+        resp = api_call("POST", "/budget", json={"monthly_budget": 20000})
+        if resp.status_code != 200:
+            log_test("9a. Budget Update", "FAIL", f"POST /api/budget failed: {resp.status_code}")
+            return False
+        
+        log_test("9a. Budget Update", "PASS", "Budget updated to 20000")
         
         # Verify in dashboard
-        response = requests.get(f"{BASE_URL}/dashboard", headers=headers)
+        time.sleep(0.5)
+        resp = api_call("GET", "/dashboard")
+        dash = resp.json()
         
-        if response.status_code != 200:
-            log_error(f"Dashboard request failed: {response.status_code}")
+        if dash["budget"]["monthly_budget"] == 20000:
+            log_test("9b. Budget Verification", "PASS", 
+                    f"Dashboard shows budget=20000, usage={dash['budget']['usage_pct']}%")
+        else:
+            log_test("9b. Budget Verification", "FAIL", 
+                    f"Expected budget=20000, got {dash['budget']['monthly_budget']}")
             return False
         
-        data = response.json()
-        budget = data.get("budget", {})
-        
-        if budget.get("monthly_budget") != 50000:
-            log_error(f"Expected monthly_budget=50000, got {budget.get('monthly_budget')}")
+        # Test validation: budget too low
+        resp = api_call("POST", "/budget", json={"monthly_budget": 50})
+        if resp.status_code == 400:
+            log_test("9c. Budget Validation", "PASS", "Budget < 100 returns 400")
+        else:
+            log_test("9c. Budget Validation", "FAIL", f"Expected 400, got {resp.status_code}")
             return False
         
-        log_success(f"Budget correctly restored in dashboard")
         return True
     except Exception as e:
-        log_error(f"Exception: {e}")
+        log_test("9. Budget", "FAIL", str(e))
         return False
 
-def test_azure_endpoints(jwt: str):
-    """Test 11: Azure endpoints (no real creds)"""
-    log_test("Azure endpoints (graceful failures)")
-    
+
+def test_10_reports():
+    """Test 10: Reports persist, list, delete"""
     try:
-        headers = {"Authorization": f"Bearer {jwt}", "Content-Type": "application/json"}
-        
-        # Test missing tenantId
-        log_info("Testing POST /api/azure/connect with missing tenantId...")
-        response = requests.post(
-            f"{BASE_URL}/azure/connect",
-            headers=headers,
-            json={}
-        )
-        
-        if response.status_code != 400:
-            log_error(f"Expected 400 for missing tenantId, got {response.status_code}")
+        # Create report
+        resp = api_call("POST", "/reports", json={"type": "Monthly Cost Report"})
+        if resp.status_code != 201:
+            log_test("10a. Report Create", "FAIL", f"POST /api/reports failed: {resp.status_code}")
             return False
         
-        log_success(f"Missing tenantId correctly rejected with 400")
+        report = resp.json()
+        report_id = report.get("id")
         
-        # Test invalid GUID format
-        log_info("Testing invalid GUID format...")
-        response = requests.post(
-            f"{BASE_URL}/azure/connect",
-            headers=headers,
-            json={
-                "tenantId": "short",
-                "clientId": "x",
-                "clientSecret": "y",
-                "subscriptionId": "z"
-            }
-        )
-        
-        if response.status_code != 400:
-            log_error(f"Expected 400 for invalid GUID, got {response.status_code}")
+        # Verify snapshot structure
+        required_fields = ["totalMonthlyCost", "budget", "forecast", "serviceBreakdown", "recommendations"]
+        if all(field in report.get("snapshot", {}) for field in required_fields):
+            log_test("10a. Report Create", "PASS", f"Report created with id={report_id}")
+        else:
+            log_test("10a. Report Create", "FAIL", "Report snapshot missing required fields")
             return False
         
-        log_success(f"Invalid GUID correctly rejected with 400")
-        
-        # Test with well-formed fake GUIDs
-        log_info("Testing with well-formed fake GUIDs...")
-        response = requests.post(
-            f"{BASE_URL}/azure/connect",
-            headers=headers,
-            json={
-                "tenantId": "11111111-1111-1111-1111-111111111111",
-                "clientId": "22222222-2222-2222-2222-222222222222",
-                "clientSecret": "fake-secret",
-                "subscriptionId": "33333333-3333-3333-3333-333333333333"
-            }
-        )
-        
-        # Should return 400/422/502 (Azure rejects), NOT 500
-        if response.status_code == 500:
-            log_error(f"Got 500 (should be 400/422/502): {response.text}")
+        # List reports
+        resp = api_call("GET", "/reports")
+        if resp.status_code != 200:
+            log_test("10b. Report List", "FAIL", f"GET /api/reports failed: {resp.status_code}")
             return False
         
-        if response.status_code not in [400, 422, 502]:
-            log_error(f"Expected 400/422/502, got {response.status_code}: {response.text}")
+        reports = resp.json()
+        if any(r["id"] == report_id for r in reports):
+            log_test("10b. Report List", "PASS", f"Report list contains newly created report")
+        else:
+            log_test("10b. Report List", "FAIL", "Newly created report not in list")
             return False
         
-        # Verify no secret leak
-        response_str = response.text
-        if "fake-secret" in response_str:
-            log_error(f"Client secret leaked in error response!")
+        # Delete report
+        resp = api_call("DELETE", f"/reports/{report_id}")
+        if resp.status_code == 200 and resp.json().get("ok") == True:
+            log_test("10c. Report Delete", "PASS", f"Report {report_id} deleted")
+        else:
+            log_test("10c. Report Delete", "FAIL", f"DELETE failed: {resp.status_code}")
             return False
-        
-        log_success(f"Fake Azure creds correctly rejected with {response.status_code}, no secret leak")
-        
-        # Test sync without connection
-        log_info("Testing POST /api/azure/sync without connection...")
-        response = requests.post(
-            f"{BASE_URL}/azure/sync",
-            headers=headers,
-            json={}
-        )
-        
-        if response.status_code != 404:
-            log_error(f"Expected 404 for sync without connection, got {response.status_code}")
-            return False
-        
-        log_success(f"Sync without connection correctly returned 404")
-        
-        # Test disconnect
-        log_info("Testing POST /api/azure/disconnect...")
-        response = requests.post(
-            f"{BASE_URL}/azure/disconnect",
-            headers=headers,
-            json={}
-        )
-        
-        if response.status_code != 200:
-            log_error(f"Expected 200 for disconnect, got {response.status_code}")
-            return False
-        
-        data = response.json()
-        if not data.get("ok") or data.get("dataSource") != "demo":
-            log_error(f"Unexpected disconnect response: {data}")
-            return False
-        
-        log_success(f"Disconnect succeeded")
         
         return True
     except Exception as e:
-        log_error(f"Exception: {e}")
+        log_test("10. Reports", "FAIL", str(e))
         return False
 
-def test_reset(jwt: str):
-    """Test 12: POST /api/reset"""
-    log_test("POST /api/reset")
-    
+
+def test_11_currency():
+    """Test 11: Currency setting"""
     try:
-        headers = {"Authorization": f"Bearer {jwt}", "Content-Type": "application/json"}
-        
-        response = requests.post(f"{BASE_URL}/reset", headers=headers, json={})
-        
-        if response.status_code != 200:
-            log_error(f"Expected 200, got {response.status_code}: {response.text}")
+        # Set currency to USD
+        resp = api_call("POST", "/settings/currency", json={"currency": "USD"})
+        if resp.status_code != 200:
+            log_test("11a. Currency Update", "FAIL", f"POST failed: {resp.status_code}")
             return False
         
-        data = response.json()
-        if data.get("status") != "reseeded":
-            log_error(f"Expected status=reseeded, got {data}")
+        log_test("11a. Currency Update", "PASS", "Currency set to USD")
+        
+        # Verify in dashboard
+        time.sleep(0.5)
+        resp = api_call("GET", "/dashboard")
+        if resp.json()["currency"] == "USD":
+            log_test("11b. Currency Verification", "PASS", "Dashboard shows currency=USD")
+        else:
+            log_test("11b. Currency Verification", "FAIL", f"Expected USD, got {resp.json()['currency']}")
             return False
         
-        log_success(f"Reset succeeded")
-        
-        # Verify dashboard still works
-        log_info("Verifying dashboard still works after reset...")
-        response = requests.get(f"{BASE_URL}/dashboard", headers=headers)
-        
-        if response.status_code != 200:
-            log_error(f"Dashboard failed after reset: {response.status_code}")
+        # Test invalid currency
+        resp = api_call("POST", "/settings/currency", json={"currency": "XYZ"})
+        if resp.status_code == 400:
+            log_test("11c. Currency Validation", "PASS", "Invalid currency returns 400")
+        else:
+            log_test("11c. Currency Validation", "FAIL", f"Expected 400, got {resp.status_code}")
             return False
         
-        log_success(f"Dashboard still works after reset")
+        # Reset to INR
+        api_call("POST", "/settings/currency", json={"currency": "INR"})
+        print("   ✓ Currency reset to INR")
+        
         return True
     except Exception as e:
-        log_error(f"Exception: {e}")
+        log_test("11. Currency", "FAIL", str(e))
         return False
 
-def test_data_isolation(jwt1: str, jwt2: str):
-    """Test 13: Data isolation between users"""
-    log_test("Data isolation between users")
-    
+
+def test_12_regression():
+    """Test 12: Regression tests for error handling"""
     try:
-        headers1 = {"Authorization": f"Bearer {jwt1}"}
-        headers2 = {"Authorization": f"Bearer {jwt2}"}
+        all_passed = True
         
-        # Get dashboard for user 2
-        log_info("Getting dashboard for user 2...")
-        response = requests.get(f"{BASE_URL}/dashboard", headers=headers2)
+        # Azure connect with fake GUIDs
+        resp = api_call("POST", "/azure/connect", json={
+            "tenantId": "12345678-1234-1234-1234-123456789012",
+            "clientId": "87654321-4321-4321-4321-210987654321",
+            "clientSecret": "fake-secret-12345",
+            "subscriptionId": "abcdef01-2345-6789-abcd-ef0123456789"
+        })
+        if resp.status_code == 422:
+            print("   ✓ Azure connect with fake GUIDs → 422")
+        else:
+            print(f"   ✗ Azure connect with fake GUIDs → {resp.status_code} (expected 422)")
+            all_passed = False
         
-        if response.status_code != 200:
-            log_error(f"User 2 dashboard failed: {response.status_code}")
-            return False
+        # Azure sync without connection (after disconnect)
+        api_call("POST", "/azure/disconnect")
+        resp = api_call("POST", "/azure/sync")
+        if resp.status_code == 404:
+            print("   ✓ Azure sync without connection → 404")
+        else:
+            print(f"   ✗ Azure sync without connection → {resp.status_code} (expected 404)")
+            all_passed = False
         
-        data2 = response.json()
-        log_success(f"User 2 got their own seeded data")
+        # Email settings with bad key
+        resp = api_call("POST", "/settings/email", json={"apiKey": "badkey", "recipient": "test@example.com"})
+        if resp.status_code == 400:
+            print("   ✓ Email with invalid key format → 400")
+        else:
+            print(f"   ✗ Email with invalid key format → {resp.status_code} (expected 400)")
+            all_passed = False
         
-        # Get settings for user 2
-        log_info("Getting settings for user 2...")
-        response = requests.get(f"{BASE_URL}/settings", headers=headers2)
+        # Email settings with valid fake key
+        resp = api_call("POST", "/settings/email", json={
+            "apiKey": "re_fakeKeyForTesting123456",
+            "recipient": "a@b.com"
+        })
+        if resp.status_code == 200:
+            print("   ✓ Email with valid fake key → 200")
+        else:
+            print(f"   ✗ Email with valid fake key → {resp.status_code} (expected 200)")
+            all_passed = False
         
-        if response.status_code != 200:
-            log_error(f"User 2 settings failed: {response.status_code}")
-            return False
+        # Email test send (should fail gracefully)
+        resp = api_call("POST", "/settings/email/test")
+        if resp.status_code == 502:
+            try:
+                data = resp.json()
+                if "error" in data:
+                    error_msg = data["error"]
+                    # Verify no key leak
+                    if "re_fake" not in error_msg and "123456" not in error_msg:
+                        print(f"   ✓ Email test send → 502 with safe error (no key leak)")
+                    else:
+                        print(f"   ✗ Email test send → 502 but error contains key: {error_msg}")
+                        all_passed = False
+                else:
+                    print(f"   ✗ Email test send → 502 but no error field in JSON")
+                    all_passed = False
+            except Exception:
+                # Response is not JSON (likely HTML error page from proxy)
+                print(f"   ⚠️  Email test send → 502 (non-JSON response, likely proxy error page)")
+        else:
+            print(f"   ✗ Email test send → {resp.status_code} (expected 502)")
+            all_passed = False
         
-        settings2 = response.json()
+        # Rules validation
+        resp = api_call("POST", "/settings/rules", json={"budgetWarnPct": 150})
+        if resp.status_code == 400:
+            print("   ✓ Rules with budgetWarnPct=150 → 400")
+        else:
+            print(f"   ✗ Rules with budgetWarnPct=150 → {resp.status_code} (expected 400)")
+            all_passed = False
         
-        # Verify user 2 does NOT see user 1's email config
-        if settings2.get("email", {}).get("configured") != False:
-            log_error(f"User 2 sees user 1's email config! {settings2.get('email')}")
-            return False
+        # Verify GET /api/settings never exposes secrets
+        resp = api_call("GET", "/settings")
+        if resp.status_code == 200:
+            settings_text = json.dumps(resp.json())
+            if "clientSecret" not in settings_text and "resendApiKey" not in settings_text:
+                print("   ✓ GET /api/settings does not expose raw secrets")
+            else:
+                print("   ✗ GET /api/settings exposes raw secrets")
+                all_passed = False
         
-        log_success(f"User 2 does NOT see user 1's email config (correctly isolated)")
+        if all_passed:
+            log_test("12. Regression Tests", "PASS", "All regression scenarios passed")
+        else:
+            log_test("12. Regression Tests", "FAIL", "Some regression tests failed")
         
-        return True
+        return all_passed
     except Exception as e:
-        log_error(f"Exception: {e}")
+        log_test("12. Regression Tests", "FAIL", str(e))
         return False
+
 
 def main():
-    print(f"\n{Colors.BLUE}{'='*80}{Colors.END}")
-    print(f"{Colors.BLUE}Cloud-Cost-Pulse Backend API Test Suite{Colors.END}")
-    print(f"{Colors.BLUE}{'='*80}{Colors.END}")
-    print(f"Base URL: {BASE_URL}")
-    print(f"Clerk API: {CLERK_API_BASE}")
+    """Run all tests"""
+    print("=" * 70)
+    print("Cloud-Cost-Pulse Backend API Test Suite")
+    print("=" * 70)
     
-    results = {}
+    tests = [
+        ("Health & Auth", test_1_health_and_auth),
+        ("Live Cost Engine", test_2_live_cost_engine),
+        ("Resource Create", test_3_resource_create),
+        ("Resource Update", test_4_resource_update),
+        ("Resource Delete", test_5_resource_delete),
+        ("Search/Filter/Pagination", test_6_search_filter_pagination),
+        ("Notifications", test_7_notifications),
+        ("Audit Logs", test_8_audit),
+        ("Budget", test_9_budget),
+        ("Reports", test_10_reports),
+        ("Currency", test_11_currency),
+        ("Regression", test_12_regression),
+    ]
     
-    # Test 1: Health check (no auth)
-    results["health"] = test_health()
-    
-    # Test 2: Dashboard unauthenticated
-    results["dashboard_unauth"] = test_dashboard_unauth()
-    
-    # Authenticate user 1
-    log_test("Authenticating User 1")
-    clerk = ClerkAuth()
-    jwt1 = clerk.get_auth_token(TEST_USER_1["email"], TEST_USER_1["password"])
-    
-    if not jwt1:
-        log_error("Failed to authenticate user 1, aborting tests")
-        sys.exit(1)
-    
-    log_success(f"User 1 authenticated successfully")
-    
-    # Test 3: Dashboard authenticated
-    results["dashboard_auth"] = test_dashboard_auth(jwt1)
-    
-    # Test 4: Settings
-    results["settings"] = test_settings(jwt1)
-    
-    # Test 5: Rules update
-    results["rules_update"] = test_rules_update(jwt1)
-    
-    # Test 6: Recommendations
-    results["recommendations"] = test_recommendations(jwt1)
-    
-    # Test 7: Email settings
-    results["email_settings"] = test_email_settings(jwt1)
-    
-    # Test 8: Email test send
-    results["email_test_send"] = test_email_test_send(jwt1)
-    
-    # Test 9: Budget alert email
-    results["budget_alert"] = test_budget_alert_email(jwt1)
-    
-    # Test 10: Budget restore
-    results["budget_restore"] = test_budget_restore(jwt1)
-    
-    # Test 11: Azure endpoints
-    results["azure_endpoints"] = test_azure_endpoints(jwt1)
-    
-    # Test 12: Reset
-    results["reset"] = test_reset(jwt1)
-    
-    # Authenticate user 2
-    log_test("Authenticating User 2")
-    jwt2 = clerk.get_auth_token(TEST_USER_2["email"], TEST_USER_2["password"])
-    
-    if not jwt2:
-        log_error("Failed to authenticate user 2, skipping isolation test")
-        results["data_isolation"] = False
-    else:
-        log_success(f"User 2 authenticated successfully")
-        # Test 13: Data isolation
-        results["data_isolation"] = test_data_isolation(jwt1, jwt2)
+    results = []
+    for name, test_func in tests:
+        try:
+            passed = test_func()
+            results.append((name, passed))
+        except Exception as e:
+            print(f"\n❌ {name}: EXCEPTION - {e}")
+            results.append((name, False))
     
     # Summary
-    print(f"\n{Colors.BLUE}{'='*80}{Colors.END}")
-    print(f"{Colors.BLUE}TEST SUMMARY{Colors.END}")
-    print(f"{Colors.BLUE}{'='*80}{Colors.END}")
+    print("\n" + "=" * 70)
+    print("TEST SUMMARY")
+    print("=" * 70)
     
-    passed = sum(1 for v in results.values() if v)
-    total = len(results)
+    passed_count = sum(1 for _, passed in results if passed)
+    total_count = len(results)
     
-    for test_name, result in results.items():
-        status = f"{Colors.GREEN}PASS{Colors.END}" if result else f"{Colors.RED}FAIL{Colors.END}"
-        print(f"{test_name}: {status}")
+    for name, passed in results:
+        status = "✅ PASS" if passed else "❌ FAIL"
+        print(f"{status} - {name}")
     
-    print(f"\n{Colors.BLUE}Total: {passed}/{total} tests passed{Colors.END}")
+    print(f"\nTotal: {passed_count}/{total_count} tests passed")
     
-    if passed == total:
-        print(f"{Colors.GREEN}All tests passed!{Colors.END}")
-        sys.exit(0)
+    if passed_count == total_count:
+        print("\n🎉 ALL TESTS PASSED!")
+        return 0
     else:
-        print(f"{Colors.RED}Some tests failed{Colors.END}")
-        sys.exit(1)
+        print(f"\n⚠️  {total_count - passed_count} test(s) failed")
+        return 1
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
