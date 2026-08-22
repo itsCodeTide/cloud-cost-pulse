@@ -994,7 +994,7 @@ function EnhancedChart({
             {controlBar}
           </div>
         </CardHeader>
-        <CardContent className={isFullscreen ? 'h-[calc(100%-120px)]' : height}>
+        <CardContent className={isFullscreen ? 'h-[calc(100%-100px)] p-6 overflow-y-auto' : height}>
           {pieData ? (
             pieData.length === 0 ? <EmptyChart /> : (() => {
               const totalPieValue = pieData.reduce((s, d) => s + (d.value || 0), 0)
@@ -1002,7 +1002,78 @@ function EnhancedChart({
                 ...d,
                 color: d.color || [CHART_THEMES[theme].primary, CHART_THEMES[theme].secondary, CHART_THEMES[theme].tertiary, '#06b6d4', '#f59e0b', '#10b981', '#ec4899'][i % 7],
                 percent: totalPieValue > 0 ? d.value / totalPieValue : 0
-              }))
+              })).sort((a, b) => b.value - a.value)
+              const topItem = enrichedPieData[0]
+
+              if (isFullscreen) {
+                return (
+                  <div className="h-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                    {/* Left: Expanded Interactive Donut Chart */}
+                    <div className="lg:col-span-6 h-[340px] sm:h-[400px] flex flex-col justify-center relative">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={enrichedPieData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={70}
+                            outerRadius={115}
+                            paddingAngle={3}
+                            animationDuration={800}
+                            label={({ percent }) => (percent >= 0.03 ? `${(percent * 100).toFixed(1)}%` : '')}
+                          >
+                            {enrichedPieData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} stroke="hsl(var(--card))" strokeWidth={2} />
+                            ))}
+                          </Pie>
+                          <Tooltip content={<ChartTooltip currency={currency} totalSum={totalPieValue} />} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      {/* Center Donut Ring Stat */}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+                        <span className="text-[11px] text-muted-foreground uppercase tracking-wider">Total Distribution</span>
+                        <span className="text-xl sm:text-2xl font-bold font-mono text-foreground">{fmt(totalPieValue)}</span>
+                        <span className="text-[10px] text-emerald-400 font-medium mt-0.5">{enrichedPieData.length} Categories</span>
+                      </div>
+                    </div>
+
+                    {/* Right: Comprehensive Breakdown Table & Metrics */}
+                    <div className="lg:col-span-6 space-y-4">
+                      <div className="flex items-center justify-between pb-2 border-b border-border">
+                        <h4 className="font-semibold text-sm">Detailed Category Breakdown</h4>
+                        <Badge variant="outline" className="text-xs">
+                          Top: {topItem?.name} ({(topItem?.percent * 100).toFixed(1)}%)
+                        </Badge>
+                      </div>
+
+                      <div className="space-y-3 max-h-[340px] overflow-y-auto pr-1">
+                        {enrichedPieData.map((item, idx) => {
+                          const pct = (item.percent * 100).toFixed(1)
+                          return (
+                            <div key={idx} className="p-3 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 transition-colors space-y-1.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2 font-medium">
+                                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                                  <span className="text-foreground">{item.name}</span>
+                                </div>
+                                <div className="text-right font-mono">
+                                  <span className="font-bold text-foreground">{fmt(item.value)}</span>
+                                  <span className="ml-2 text-primary font-semibold">{pct}%</span>
+                                </div>
+                              </div>
+                              <Progress value={item.percent * 100} className="h-1.5" />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+
+              // Abstract Clean View for Dashboard Card
               return (
                 <div className="h-full flex flex-col justify-between">
                   <div className="flex-1 min-h-0">
@@ -1018,7 +1089,7 @@ function EnhancedChart({
                           outerRadius={pieOuterRadius}
                           paddingAngle={2}
                           animationDuration={800}
-                          label={({ percent }) => (percent >= 0.04 ? `${(percent * 100).toFixed(1)}%` : '')}
+                          label={({ percent }) => (percent >= 0.06 ? `${(percent * 100).toFixed(0)}%` : '')}
                           labelLine={false}
                         >
                           {enrichedPieData.map((entry, index) => (
@@ -1043,21 +1114,16 @@ function EnhancedChart({
                     </ResponsiveContainer>
                   </div>
 
-                  {/* Descriptive Percentage Distribution Summary Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-2 border-t border-border/40 text-[11px]">
-                    {enrichedPieData.slice(0, 6).map((item, idx) => {
-                      const pct = (item.percent * 100).toFixed(1)
-                      return (
-                        <div key={idx} className="flex items-center justify-between p-1.5 rounded-md bg-muted/20 border border-border/30">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                            <span className="truncate text-muted-foreground">{item.name}</span>
-                          </div>
-                          <span className="font-mono font-semibold text-foreground shrink-0">{pct}%</span>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  {/* Abstract Abstract Summary Line for Dashboard */}
+                  {topItem && (
+                    <div className="mt-2 pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1.5 truncate">
+                        <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: topItem.color }} />
+                        <span>Top Driver: <strong className="text-foreground">{topItem.name}</strong></span>
+                      </span>
+                      <span className="font-mono text-primary font-semibold shrink-0">{(topItem.percent * 100).toFixed(1)}% ({fmt(topItem.value)})</span>
+                    </div>
+                  )}
                 </div>
               )
             })()
