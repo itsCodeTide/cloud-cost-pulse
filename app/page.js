@@ -1076,7 +1076,7 @@ function EnhancedChart({
               // Abstract Clean View for Dashboard Card
               return (
                 <div className="h-full flex flex-col justify-between">
-                  <div className="flex-1 min-h-0">
+                  <div className="flex-1 min-h-0 relative">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -1085,15 +1085,15 @@ function EnhancedChart({
                           nameKey="name"
                           cx="50%"
                           cy="50%"
-                          innerRadius={pieInnerRadius}
+                          innerRadius={pieInnerRadius + 5}
                           outerRadius={pieOuterRadius}
-                          paddingAngle={2}
+                          paddingAngle={3}
                           animationDuration={800}
-                          label={({ percent }) => (percent >= 0.06 ? `${(percent * 100).toFixed(0)}%` : '')}
+                          label={false}
                           labelLine={false}
                         >
                           {enrichedPieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                            <Cell key={`cell-${index}`} fill={entry.color} stroke="hsl(var(--card))" strokeWidth={1.5} />
                           ))}
                         </Pie>
                         <Tooltip content={<ChartTooltip currency={currency} totalSum={totalPieValue} />} />
@@ -1103,25 +1103,28 @@ function EnhancedChart({
                           align="center"
                           verticalAlign="bottom"
                           iconType="circle"
-                          iconSize={8}
-                          formatter={(value, entry) => {
-                            const val = entry.payload?.value || 0
-                            const pct = totalPieValue > 0 ? ((val / totalPieValue) * 100).toFixed(1) : 0
-                            return <span className="text-muted-foreground">{value} <strong className="text-foreground font-mono">{pct}%</strong></span>
-                          }}
+                          iconSize={6}
+                          formatter={(value) => <span className="text-muted-foreground text-[11px] font-medium">{value}</span>}
                         />
                       </PieChart>
                     </ResponsiveContainer>
+                    {/* Clean Center Donut Label */}
+                    <div className="absolute inset-0 pb-6 flex flex-col items-center justify-center pointer-events-none text-center">
+                      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Total</span>
+                      <span className="text-sm font-bold font-mono text-foreground">{fmt(totalPieValue)}</span>
+                    </div>
                   </div>
 
-                  {/* Abstract Abstract Summary Line for Dashboard */}
+                  {/* Clean Abstract Summary Footer */}
                   {topItem && (
-                    <div className="mt-2 pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span className="flex items-center gap-1.5 truncate">
+                    <div className="pt-2 border-t border-border/40 flex items-center justify-between text-[11px]">
+                      <span className="flex items-center gap-1.5 truncate text-muted-foreground">
                         <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: topItem.color }} />
-                        <span>Top Driver: <strong className="text-foreground">{topItem.name}</strong></span>
+                        <span>Top Service: <strong className="text-foreground">{topItem.name}</strong></span>
                       </span>
-                      <span className="font-mono text-primary font-semibold shrink-0">{(topItem.percent * 100).toFixed(1)}% ({fmt(topItem.value)})</span>
+                      <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0">
+                        {(topItem.percent * 100).toFixed(1)}%
+                      </Badge>
                     </div>
                   )}
                 </div>
