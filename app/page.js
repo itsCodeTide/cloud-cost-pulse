@@ -1,13 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LayoutDashboard, BarChart3, Wallet, Lightbulb, FileText, User,
   TrendingUp, TrendingDown, Cloud, Server, Activity, PiggyBank,
   Search, Bell, Moon, Sun, Sparkles, AlertTriangle, CheckCircle2, Download,
+  LogIn, UserPlus, Plug,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
+import {
+  SignInButton, SignUpButton, UserButton, useUser,
+} from '@clerk/nextjs'
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
   PieChart, Pie, Cell, Legend, AreaChart, Area, BarChart, Bar,
@@ -108,12 +112,58 @@ function Topbar({ active, onReseed }) {
           <Button variant="ghost" size="icon">
             <Bell className="h-4 w-4" />
           </Button>
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs">AD</AvatarFallback>
-          </Avatar>
+          <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: 'h-8 w-8' } }} />
         </div>
       </div>
     </header>
+  )
+}
+
+function Landing() {
+  return (
+    <div className="min-h-screen bg-background relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(139,92,246,0.15),transparent_50%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(59,130,246,0.15),transparent_50%)]" />
+      <nav className="relative z-10 h-16 flex items-center px-6 md:px-12">
+        <div className="flex items-center gap-2">
+          <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 grid place-items-center shadow-lg shadow-blue-500/20">
+            <Cloud className="h-5 w-5 text-white" />
+          </div>
+          <span className="font-semibold tracking-tight">Cloud-Cost-Pulse</span>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <SignInButton mode="modal"><Button variant="ghost" size="sm"><LogIn className="h-4 w-4 mr-1" /> Sign in</Button></SignInButton>
+          <SignUpButton mode="modal"><Button size="sm"><UserPlus className="h-4 w-4 mr-1" /> Get started</Button></SignUpButton>
+        </div>
+      </nav>
+      <main className="relative z-10 max-w-5xl mx-auto px-6 pt-16 pb-24 text-center">
+        <Badge variant="secondary" className="mb-6"><Sparkles className="h-3 w-3 mr-1 text-purple-400" /> Azure FinOps for teams</Badge>
+        <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-tight">
+          Smart Azure Cloud Cost<br /><span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Monitoring & Analytics</span>
+        </h1>
+        <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
+          Track spend, forecast next month&apos;s bill, catch idle resources, and stay within budget — all in one dashboard.
+        </p>
+        <div className="mt-8 flex gap-3 justify-center">
+          <SignUpButton mode="modal"><Button size="lg">Get started free</Button></SignUpButton>
+          <SignInButton mode="modal"><Button size="lg" variant="outline">Sign in</Button></SignInButton>
+        </div>
+        <div className="mt-16 grid md:grid-cols-4 gap-4 text-left">
+          {[
+            { icon: BarChart3, t: 'Live analytics', d: 'Area, pie, bar and stacked area charts of every service.' },
+            { icon: Sparkles, t: 'Forecasting', d: 'Predict next month using a 3-month rolling average.' },
+            { icon: Wallet, t: 'Budgets & alerts', d: 'Get notified at 80% and 100% of your monthly budget.' },
+            { icon: Lightbulb, t: 'Optimization', d: 'Ranked recommendations with potential savings.' },
+          ].map((f) => (
+            <div key={f.t} className="rounded-xl border border-border/60 bg-card/40 p-4">
+              <f.icon className="h-5 w-5 text-purple-400" />
+              <div className="mt-3 font-semibold">{f.t}</div>
+              <div className="mt-1 text-sm text-muted-foreground">{f.d}</div>
+            </div>
+          ))}
+        </div>
+      </main>
+    </div>
   )
 }
 
@@ -506,11 +556,70 @@ function RecommendationsPage({ data }) {
   )
 }
 
-function ReportsPage({ data }) {
+function ReportsPage({ data, mainRef }) {
   if (!data) return <LoadingGrid />
-  const generate = (type) => {
-    toast.success(`${type} report generated`, { description: 'PDF export ready (demo)' })
+
+  const generatePdf = async (type) => {
+    toast.loading(`Generating ${type}...`, { id: 'pdf' })
+    try {
+      const [{ jsPDF }, html2canvas] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas').then(m => m.default),
+      ])
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+      const pageW = doc.internal.pageSize.getWidth()
+      let y = 40
+
+      doc.setFontSize(20); doc.setTextColor(20)
+      doc.text(`Cloud-Cost-Pulse — ${type}`, 40, y); y += 20
+      doc.setFontSize(10); doc.setTextColor(120)
+      doc.text(new Date().toLocaleString(), 40, y); y += 24
+
+      doc.setFontSize(12); doc.setTextColor(20)
+      const { stats, budget, forecast } = data
+      const lines = []
+      if (type === 'Monthly Report' || type === 'Service Report') {
+        lines.push(`Total Monthly Cost: ${formatINR(stats.totalMonthlyCost)}  (growth ${stats.growth}% vs last month)`)
+        lines.push(`Total Resources: ${stats.totalResources}   Active Services: ${stats.activeServices}`)
+        lines.push(`Potential Savings identified: ${formatINR(stats.potentialSavings)}`)
+      }
+      if (type === 'Budget Report') {
+        lines.push(`Monthly Budget: ${formatINR(budget.monthly_budget)}`)
+        lines.push(`Used: ${formatINR(budget.used)}  (${budget.usage_pct}%)`)
+        lines.push(`Remaining: ${formatINR(budget.remaining)}`)
+        lines.push(`Forecasted Spend: ${formatINR(forecast.expectedCost)}  (expected change ${forecast.growth}%)`)
+      }
+      if (type === 'Service Report') {
+        lines.push('')
+        lines.push('Service-wise Cost (current month):')
+        data.serviceBreakdown.forEach(s => lines.push(`  • ${s.name}: ${formatINR(s.value)}`))
+      }
+      lines.forEach(l => { doc.text(l, 40, y); y += 16 })
+
+      // capture current dashboard visuals
+      if (mainRef?.current) {
+        const canvas = await html2canvas(mainRef.current, {
+          backgroundColor: '#0a0a0a',
+          scale: 1.4,
+          useCORS: true,
+          logging: false,
+        })
+        const img = canvas.toDataURL('image/jpeg', 0.85)
+        const imgW = pageW - 80
+        const imgH = (canvas.height * imgW) / canvas.width
+        if (y + imgH > doc.internal.pageSize.getHeight() - 40) { doc.addPage(); y = 40 }
+        doc.addImage(img, 'JPEG', 40, y + 10, imgW, imgH)
+      }
+
+      const filename = `cloud-cost-pulse-${type.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.pdf`
+      doc.save(filename)
+      toast.success(`${type} downloaded`, { id: 'pdf', description: filename })
+    } catch (e) {
+      console.error(e)
+      toast.error('Failed to generate PDF', { id: 'pdf', description: e.message })
+    }
   }
+
   const reports = [
     { title: 'Monthly Report', desc: 'Complete overview of this month spend, per-service breakdown, and top resources.', icon: FileText },
     { title: 'Service Report', desc: 'Deep dive per Azure service — cost trend, resource count, and utilization.', icon: BarChart3 },
@@ -528,7 +637,7 @@ function ReportsPage({ data }) {
               <CardDescription>{r.desc}</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button onClick={() => generate(r.title)} className="w-full"><Download className="h-4 w-4 mr-2" /> Export PDF</Button>
+              <Button onClick={() => generatePdf(r.title)} className="w-full"><Download className="h-4 w-4 mr-2" /> Export PDF</Button>
             </CardContent>
           </Card>
         )
@@ -538,27 +647,41 @@ function ReportsPage({ data }) {
 }
 
 function ProfilePage() {
+  const { user } = useUser()
+  const name = user?.fullName || 'Signed-in user'
+  const email = user?.primaryEmailAddress?.emailAddress || ''
+  const initials = (name.split(' ').map(s => s[0]).join('') || 'U').slice(0, 2).toUpperCase()
   return (
     <Card className="max-w-2xl">
       <CardHeader>
         <div className="flex items-center gap-4">
           <Avatar className="h-16 w-16">
-            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xl">AD</AvatarFallback>
+            {user?.imageUrl ? (
+              <img src={user.imageUrl} alt={name} className="h-full w-full object-cover rounded-full" />
+            ) : (
+              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xl">{initials}</AvatarFallback>
+            )}
           </Avatar>
           <div>
-            <CardTitle>Admin Demo</CardTitle>
-            <CardDescription>admin@cloud-cost-pulse.io</CardDescription>
+            <CardTitle>{name}</CardTitle>
+            <CardDescription>{email}</CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
-          <div><Label>Full name</Label><Input defaultValue="Admin Demo" /></div>
-          <div><Label>Email</Label><Input defaultValue="admin@cloud-cost-pulse.io" /></div>
+          <div><Label>Full name</Label><Input defaultValue={name} /></div>
+          <div><Label>Email</Label><Input defaultValue={email} readOnly /></div>
           <div><Label>Role</Label><Input defaultValue="Cloud Administrator" /></div>
           <div><Label>Organization</Label><Input defaultValue="Acme Corp" /></div>
         </div>
-        <Button>Save Changes</Button>
+        <div className="rounded-lg border border-border p-4 bg-muted/30">
+          <div className="flex items-center gap-2 text-sm font-medium"><Plug className="h-4 w-4 text-blue-400" /> Azure Connection</div>
+          <p className="mt-1 text-xs text-muted-foreground">Currently viewing demo data. Connect your Azure Cost Management API to see your real bill.</p>
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => toast.info('Azure integration coming soon', { description: 'Provide Service Principal keys to enable.' })}>
+            <Plug className="h-4 w-4 mr-2" /> Connect Azure
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )
@@ -581,39 +704,69 @@ function LoadingGrid() {
 function App() {
   const [active, setActive] = useState('dashboard')
   const [data, setData] = useState(null)
+  const { isSignedIn, isLoaded } = useUser()
+  const mainRef = useRef(null)
+  const alertedRef = useRef({ warn: false, over: false })
 
   const load = async () => {
     try {
       const res = await fetch('/api/dashboard')
+      if (res.status === 401) return
       const j = await res.json()
       setData(j)
     } catch (e) { toast.error('Failed to load data') }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { if (isSignedIn) load() }, [isSignedIn])
+
+  // Budget threshold alerts (80% and 100%)
+  useEffect(() => {
+    if (!data?.budget) return
+    const pct = data.budget.usage_pct
+    if (pct >= 100 && !alertedRef.current.over) {
+      alertedRef.current.over = true
+      toast.error('Budget exceeded!', {
+        description: `You are at ${pct}% of ${formatINR(data.budget.monthly_budget)}. Consider stopping idle resources.`,
+        duration: 8000,
+      })
+    } else if (pct >= 80 && pct < 100 && !alertedRef.current.warn) {
+      alertedRef.current.warn = true
+      toast.warning('Budget alert: 80% reached', {
+        description: `Used ${formatINR(data.budget.used)} of ${formatINR(data.budget.monthly_budget)} (${pct}%).`,
+        duration: 8000,
+      })
+    }
+  }, [data])
 
   const reseed = async () => {
     toast.loading('Reseeding demo data…', { id: 'reseed' })
     await fetch('/api/reset', { method: 'POST' })
+    alertedRef.current = { warn: false, over: false }
     await load()
     toast.success('Fresh demo data loaded', { id: 'reseed' })
   }
 
-  return (
+  if (!isLoaded) {
+    return <div className="min-h-screen bg-background grid place-items-center text-muted-foreground">Loading…</div>
+  }
+
+  return isSignedIn ? (
     <div className="min-h-screen bg-background flex">
       <Sidebar active={active} setActive={setActive} />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar active={active} onReseed={reseed} />
-        <main className="flex-1 p-4 md:p-8 overflow-x-hidden">
+        <main ref={mainRef} className="flex-1 p-4 md:p-8 overflow-x-hidden">
           {active === 'dashboard' && <DashboardPage data={data} refresh={load} />}
           {active === 'analytics' && <AnalyticsPage data={data} />}
           {active === 'budget' && <BudgetPage data={data} refresh={load} />}
           {active === 'recommendations' && <RecommendationsPage data={data} />}
-          {active === 'reports' && <ReportsPage data={data} />}
+          {active === 'reports' && <ReportsPage data={data} mainRef={mainRef} />}
           {active === 'profile' && <ProfilePage />}
         </main>
       </div>
     </div>
+  ) : (
+    <Landing />
   )
 }
 
