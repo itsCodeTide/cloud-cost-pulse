@@ -9,6 +9,7 @@ import { askFinOpsCopilot } from '@/lib/ai-copilot'
 import { calculateTagGovernance, detectCostAnomalies } from '@/lib/tag-governance'
 import { discoverAzureResources, validateAzureServicePrincipal, fetchAzureAdvisorRecommendations, fetchAzureMonitorMetrics } from '@/lib/azure-client'
 import { broadcastDashboardUpdateWS } from '../ws/route.js'
+import { broadcastDashboardUpdate } from '../stream/route.js'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -178,6 +179,16 @@ function createMemoryDb() {
           rows[idx] = next
           return { matchedCount: 1, modifiedCount: 1 }
         },
+        async updateMany(filter, update) {
+          let matched = 0
+          for (let i = 0; i < rows.length; i++) {
+            if (rowMatchesQuery(rows[i], filter)) {
+              rows[i] = applyMemoryUpdate(rows[i], update)
+              matched++
+            }
+          }
+          return { matchedCount: matched, modifiedCount: matched }
+        },
         async createIndex() {
           return true
         },
@@ -300,8 +311,14 @@ async function audit(db, tenantId, userId, { action, entity, entity_id = null, p
 async function notify(db, tenantId, { type, title, message, severity = 'info', dedupeId = null }) {
   const base = { id: uuidv4(), tenantId, type, title, message, severity, read: false, created_at: new Date() }
   try {
-    if (dedupeId) { await db.collection('notifications').insertOne({ _id: `${tenantId}:${dedupeId}`, ...base }); return true }
-    await db.collection('notifications').insertOne(base); return true
+    if (dedupeId) {
+      await db.collection('notifications').insertOne({ _id: `${tenantId}:${dedupeId}`, ...base })
+    } else {
+      await db.collection('notifications').insertOne(base)
+    }
+    try { broadcastDashboardUpdateWS({ event: 'notification', tenantId, notification: base }) } catch {}
+    try { broadcastDashboardUpdate({ event: 'notification', tenantId, notification: base }) } catch {}
+    return true
   } catch (e) {
     if (e.code === 11000) return false // dedupe hit
     console.error('notify error', e.message); return false
@@ -1256,6 +1273,7 @@ export async function POST(request, ctx) {
       await db.collection('settings').updateOne({ tenantId }, { $set: { dataSource: 'upload' } }, { upsert: true })
       await audit(db, tenantId, userId, { action: 'upload', entity: 'resources', new_value: `${docs.length} resources imported` })
       await notify(db, tenantId, { type: 'system', severity: 'success', title: 'Resources imported', message: `${docs.length} resources imported from your file.` })
+      cacheClear(tenantId)
       return ok({ ok: true, count: docs.length }, 201)
     }
 
@@ -1269,6 +1287,7 @@ export async function POST(request, ctx) {
       await audit(db, tenantId, userId, { action: 'create', entity: 'resource', entity_id: doc.id, new_value: `${doc.resource_name} (${fmtMoney(doc.monthly_cost)})` })
       await notify(db, tenantId, { type: 'resource', severity: 'success', title: 'Resource added', message: `${doc.resource_name} (${doc.service_type}) added at ${fmtMoney(doc.monthly_cost)}/mo.` })
       if (doc.status === 'Inactive') await notify(db, tenantId, { type: 'resource', severity: 'warning', title: 'Unused resource detected', message: `${doc.resource_name} was added as Inactive — consider deleting it.` })
+      cacheClear(tenantId)
       return ok(rest, 201)
     }
 
@@ -1280,6 +1299,7 @@ export async function POST(request, ctx) {
       await db.collection('budgets').insertOne(doc)
       await audit(db, tenantId, userId, { action: 'update', entity: 'budget', entity_id: doc.id, prev_value: prev ? fmtMoney(prev.monthly_budget) : null, new_value: fmtMoney(doc.monthly_budget) })
       await notify(db, tenantId, { type: 'budget', severity: 'info', title: 'Budget updated', message: `Monthly budget set to ${fmtMoney(doc.monthly_budget)}.` })
+      cacheClear(tenantId)
       const { _id, ...rest } = doc
       return ok(rest)
     }
@@ -1318,13 +1338,42 @@ export async function POST(request, ctx) {
       await db.collection('reports').insertOne(doc)
       await audit(db, tenantId, userId, { action: 'generate', entity: 'report', entity_id: doc.id, new_value: type })
       await notify(db, tenantId, { type: 'report', severity: 'success', title: 'Report generated', message: `${type} generated and saved.` })
+      cacheClear(tenantId)
       const { _id, ...rest } = doc
       return ok(rest, 201)
     }
 
-    if (path === 'notifications/read-all') {
-      await db.collection('notifications').updateMany({ tenantId, read: false }, { $set: { read: true } })
-      return ok({ ok: true })
+    // ---- Notifications POST endpoints ----
+    if (parts[0] === 'notifications') {
+      if (parts[1] === 'read-all' || path === 'notifications/read-all') {
+        await db.collection('notifications').updateMany({ tenantId, read: false }, { $set: { read: true } })
+        return ok({ ok: true })
+      }
+      if (parts[1] === 'clear-all' || path === 'notifications/clear-all') {
+        await db.collection('notifications').deleteMany({ tenantId })
+        return ok({ ok: true })
+      }
+      if (parts[1]) {
+        // Individual notification mark as read: /api/notifications/:id or /api/notifications/:id/read
+        const notifId = parts[1]
+        await db.collection('notifications').updateOne({ tenantId, id: notifId }, { $set: { read: true } })
+        return ok({ ok: true })
+      }
+    }
+
+    if (path === 'settings/notifications') {
+      const prefs = {
+        inApp: body.inApp !== false,
+        budgetAlerts: body.budgetAlerts !== false,
+        optAlerts: body.optAlerts !== false,
+        emailAlerts: body.emailAlerts !== false,
+      }
+      await db.collection('settings').updateOne(
+        { tenantId },
+        { $set: { notification_prefs: prefs, updated_at: new Date() } },
+        { upsert: true }
+      )
+      return ok({ saved: true, notification_prefs: prefs })
     }
 
     if (path === 'reset') {
@@ -1341,6 +1390,7 @@ export async function POST(request, ctx) {
           db.collection('meta').deleteMany({ _id: `seed:${SEED_VERSION}:${tenantId}` }),
         ])
       }
+      cacheClear(tenantId)
       await seedIfEmptyForTenant(db, tenantId, { demo: true })
       return ok({ status: 'reseeded', mode })
     }
@@ -1459,8 +1509,16 @@ export async function PUT(request, ctx) {
       const newStr = changes.map((k) => `${k}: ${value[k]}`).join(', ')
       await audit(db, tenantId, userId, { action: 'update', entity: 'resource', entity_id: id, prev_value: prevStr || null, new_value: newStr || null })
       await notify(db, tenantId, { type: 'resource', severity: 'info', title: 'Resource updated', message: `${updated.resource_name} was updated${changes.length ? ` (${changes.join(', ')})` : ''}.` })
+      cacheClear(tenantId)
       const { _id, ...rest } = updated
       return ok(rest)
+    }
+
+    if (parts[0] === 'notifications' && parts[1]) {
+      const id = parts[1]
+      const read = body.read !== undefined ? !!body.read : true
+      await db.collection('notifications').updateOne({ tenantId, id }, { $set: { read } })
+      return ok({ ok: true })
     }
 
     return ok({ error: 'Not found' }, 404)
@@ -1487,11 +1545,21 @@ export async function DELETE(request, ctx) {
       await db.collection('resources').deleteOne({ tenantId, id })
       await audit(db, tenantId, userId, { action: 'delete', entity: 'resource', entity_id: id, prev_value: `${existing.resource_name} (${fmtMoney(existing.monthly_cost)})` })
       await notify(db, tenantId, { type: 'resource', severity: 'warning', title: 'Resource deleted', message: `${existing.resource_name} (${existing.service_type}) was deleted.` })
+      cacheClear(tenantId)
       return ok({ ok: true })
     }
 
     if (parts[0] === 'reports' && parts[1]) {
       await db.collection('reports').deleteOne({ tenantId, id: parts[1] })
+      return ok({ ok: true })
+    }
+
+    if (parts[0] === 'notifications') {
+      if (parts[1]) {
+        await db.collection('notifications').deleteOne({ tenantId, id: parts[1] })
+        return ok({ ok: true })
+      }
+      await db.collection('notifications').deleteMany({ tenantId })
       return ok({ ok: true })
     }
 

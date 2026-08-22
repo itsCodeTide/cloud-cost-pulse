@@ -25,7 +25,7 @@ function useChart() {
   return context
 }
 
-const ChartContainer = React.forwardRef(({ id, className, children, config, ...props }, ref) => {
+const ChartContainer = React.forwardRef(({ id, className, children, config, timeFormat = 'month', ...props }, ref) => {
   const uniqueId = React.useId()
   const chartId = `chart-${id || uniqueId.replace(/:/g, "")}`
 
@@ -41,7 +41,22 @@ const ChartContainer = React.forwardRef(({ id, className, children, config, ...p
         {...props}>
         <ChartStyle id={chartId} config={config} />
         <RechartsPrimitive.ResponsiveContainer>
-          {children}
+          {React.Children.map(children, child => {
+            if (React.isValidElement(child) && child.type === RechartsPrimitive.XAxis) {
+              return React.cloneElement(child, {
+                tickFormatter: (value) => {
+                  if (timeFormat === 'monthYear') {
+                    const date = new Date(value);
+                    if (!isNaN(date.getTime())) {
+                      return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date);
+                    }
+                  }
+                  return value;
+                }
+              } as any);
+            }
+            return child;
+          })}
         </RechartsPrimitive.ResponsiveContainer>
       </div>
     </ChartContext.Provider>
@@ -99,6 +114,7 @@ const ChartTooltipContent = React.forwardRef((
     color,
     nameKey,
     labelKey,
+    timeFormat = 'month',
   },
   ref
 ) => {
@@ -112,24 +128,33 @@ const ChartTooltipContent = React.forwardRef((
     const [item] = payload
     const key = `${labelKey || item?.dataKey || item?.name || "value"}`
     const itemConfig = getPayloadConfigFromPayload(config, item, key)
-    const value =
-      !labelKey && typeof label === "string"
+    const rawValue = !labelKey && typeof label === "string"
         ? config[label]?.label || label
         : itemConfig?.label
+
+    const displayLabel = (() => {
+      if (timeFormat === 'monthYear') {
+        const date = new Date(label);
+        if (!isNaN(date.getTime())) {
+          return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date);
+        }
+      }
+      return rawValue || label;
+    })();
 
     if (labelFormatter) {
       return (
         <div className={cn("font-medium", labelClassName)}>
-          {labelFormatter(value, payload)}
+          {labelFormatter(displayLabel, payload)}
         </div>
       );
     }
 
-    if (!value) {
+    if (!displayLabel) {
       return null
     }
 
-    return <div className={cn("font-medium", labelClassName)}>{value}</div>;
+    return <div className={cn("font-medium", labelClassName)}>{displayLabel}</div>;
   }, [
     label,
     labelFormatter,
@@ -138,6 +163,7 @@ const ChartTooltipContent = React.forwardRef((
     labelClassName,
     config,
     labelKey,
+    timeFormat
   ])
 
   if (!active || !payload?.length) {
@@ -204,7 +230,7 @@ const ChartTooltipContent = React.forwardRef((
                     </div>
                     {item.value && (
                       <span className="font-mono font-medium tabular-nums text-foreground">
-                        {item.value.toLocaleString()}
+                        {typeof item.value === 'number' ? item.value.toLocaleString() : item.value}
                       </span>
                     )}
                   </div>

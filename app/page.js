@@ -8,7 +8,8 @@ import {
   LogIn, UserPlus, Plug, Settings as SettingsIcon, Mail, SlidersHorizontal,
   RefreshCw, Unplug, Send, Users, Plus, Pencil, Trash2, Filter, X, Clock, Info, Upload,
   Database, FileSpreadsheet, ShieldAlert, Check, ChevronRight, Eye, Layers, Shield, Play,
-  Maximize2, Minimize2, Image, BarChart2, LineChart as LineChartIcon, Palette, ZoomIn, ZoomOut, ToggleLeft, Hash
+  Maximize2, Minimize2, Image, BarChart2, LineChart as LineChartIcon, Palette, ZoomIn, ZoomOut, ToggleLeft, Hash,
+  CalendarDays
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -39,6 +40,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Switch } from '@/components/ui/switch'
 
 import { validateAndParseImportData, parseCSVText } from '@/lib/import-parser'
 import { generateCSVReport, generatePDFReport, downloadFile } from '@/lib/report-exporter'
@@ -102,18 +104,18 @@ function GlobalSearchModal({ open, setOpen, onNavigate }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-xl p-0 gap-0 overflow-hidden">
-        <div className="flex items-center px-4 border-b border-border">
-          <Search className="h-4 w-4 text-muted-foreground mr-2" />
+      <DialogContent className="max-w-xl w-[95vw] max-h-[90vh] p-0 gap-0 overflow-hidden">
+        <div className="flex items-center px-3 sm:px-4 border-b border-border">
+          <Search className="h-4 w-4 text-muted-foreground mr-2 shrink-0" />
           <Input
-            placeholder="Search resources, services, regions, owners... (Cmd+K)"
+            placeholder="Search resources, services, regions... (Cmd+K)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-12 text-sm"
+            className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-11 sm:h-12 text-xs sm:text-sm"
           />
-          <Badge variant="outline" className="text-[10px] text-muted-foreground ml-auto">ESC to close</Badge>
+          <Badge variant="outline" className="hidden sm:inline-flex text-[10px] text-muted-foreground ml-auto shrink-0">ESC to close</Badge>
         </div>
-        <ScrollArea className="max-h-80 p-4">
+        <ScrollArea className="max-h-[60vh] sm:max-h-80 p-3 sm:p-4">
           {!query.trim() ? (
             <div className="text-xs text-muted-foreground text-center py-6">Type a query to search resources across services, regions, and owners.</div>
           ) : loading ? (
@@ -127,14 +129,14 @@ function GlobalSearchModal({ open, setOpen, onNavigate }) {
                 <div
                   key={r.id}
                   onClick={() => { onNavigate('resources', r.resource_name); setOpen(false) }}
-                  className="flex items-center justify-between p-2 rounded-md hover:bg-accent cursor-pointer text-sm"
+                  className="flex items-center justify-between p-2 rounded-md hover:bg-accent cursor-pointer text-xs sm:text-sm"
                 >
-                  <div className="flex items-center gap-2">
-                    <Boxes className="h-4 w-4 text-blue-400" />
-                    <span className="font-medium">{r.resource_name}</span>
-                    <span className="text-xs text-muted-foreground">({r.service_type})</span>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <Boxes className="h-4 w-4 text-blue-400 shrink-0" />
+                    <span className="font-medium truncate">{r.resource_name}</span>
+                    <span className="text-[11px] text-muted-foreground hidden sm:inline truncate">({r.service_type})</span>
                   </div>
-                  <Badge variant="outline" className={STATUS_BADGE[r.status] || ''}>{r.status}</Badge>
+                  <Badge variant="outline" className={`text-[10px] shrink-0 ml-2 ${STATUS_BADGE[r.status] || ''}`}>{r.status}</Badge>
                 </div>
               ))}
             </div>
@@ -206,39 +208,39 @@ function DataImportModal({ open, setOpen, onImportSuccess }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
             <Upload className="h-5 w-5 text-purple-400" /> Import Cloud Cost Data
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-xs sm:text-sm">
             Upload a CSV, Excel, or JSON file to import cloud resource costs into your database.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-primary/50 transition-colors">
-            <FileSpreadsheet className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
-            <div className="text-sm font-medium">Select a CSV or JSON cost file</div>
-            <div className="text-xs text-muted-foreground mt-1">Expected columns: resource_name, service_type, region, monthly_cost, status, owner</div>
+          <div className="border-2 border-dashed border-border rounded-xl p-4 sm:p-6 text-center hover:border-primary/50 transition-colors">
+            <FileSpreadsheet className="h-8 w-8 sm:h-10 sm:w-10 text-muted-foreground mx-auto mb-2" />
+            <div className="text-xs sm:text-sm font-medium">Select a CSV or JSON cost file</div>
+            <div className="text-[11px] sm:text-xs text-muted-foreground mt-1">Expected columns: resource_name, service_type, region, monthly_cost, status, owner</div>
             <Input type="file" accept=".csv,.json,.txt" onChange={handleFileChange} className="mt-4 max-w-xs mx-auto text-xs" />
           </div>
 
           {parsedResult && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs bg-muted/30 p-3 rounded-lg border border-border">
-                <div>Total Rows: <b>{parsedResult.summary.total}</b></div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-muted/30 p-2.5 sm:p-3 rounded-lg border border-border text-center sm:text-left">
+                <div>Total: <b>{parsedResult.summary.total}</b></div>
                 <div className="text-emerald-400">Valid: <b>{parsedResult.summary.validCount}</b></div>
                 <div className="text-amber-400">Duplicates: <b>{parsedResult.summary.duplicateCount}</b></div>
                 <div className="text-red-400">Errors: <b>{parsedResult.summary.errorCount}</b></div>
               </div>
 
-              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Parsed Preview (First 5 Rows)</div>
-              <ScrollArea className="max-h-48 rounded-lg border border-border">
-                <Table className="text-xs">
+              <div className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Parsed Preview (First 5 Rows)</div>
+              <ScrollArea className="max-h-44 sm:max-h-48 rounded-lg border border-border">
+                <Table className="text-xs min-w-[480px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Row</TableHead>
+                      <TableHead className="w-12">Row</TableHead>
                       <TableHead>Resource</TableHead>
                       <TableHead>Service</TableHead>
                       <TableHead>Cost</TableHead>
@@ -268,9 +270,9 @@ function DataImportModal({ open, setOpen, onImportSuccess }) {
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleConfirmImport} disabled={busy || !parsedResult || parsedResult.summary.validCount === 0}>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="ghost" onClick={() => setOpen(false)} className="w-full sm:w-auto text-xs">Cancel</Button>
+          <Button onClick={handleConfirmImport} disabled={busy || !parsedResult || parsedResult.summary.validCount === 0} className="w-full sm:w-auto text-xs">
             {busy ? 'Importing…' : `Import ${parsedResult?.summary.validCount || 0} Resources`}
           </Button>
         </DialogFooter>
@@ -285,29 +287,29 @@ function DemoDataModal({ open, setOpen, onConfirm }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md w-[95vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
             <Sparkles className="h-5 w-5 text-purple-400" /> Load FinOps Demo Dataset
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-xs sm:text-sm">
             Populates your workspace with 50 Azure resources across 7 services, 12 months of spending history, budgets, recommendations, and audit logs.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-3">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">Select Seed Mode</Label>
+          <Label className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Select Seed Mode</Label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div
               onClick={() => setMode('replace')}
-              className={`p-4 rounded-xl border cursor-pointer transition-all ${mode === 'replace' ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}`}
+              className={`p-3.5 sm:p-4 rounded-xl border cursor-pointer transition-all ${mode === 'replace' ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}`}
             >
               <div className="font-semibold text-sm">Replace Data</div>
               <div className="text-xs text-muted-foreground mt-1">Clears existing workspace resources and reseeds fresh demo records.</div>
             </div>
             <div
               onClick={() => setMode('merge')}
-              className={`p-4 rounded-xl border cursor-pointer transition-all ${mode === 'merge' ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}`}
+              className={`p-3.5 sm:p-4 rounded-xl border cursor-pointer transition-all ${mode === 'merge' ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'}`}
             >
               <div className="font-semibold text-sm">Merge Data</div>
               <div className="text-xs text-muted-foreground mt-1">Preserves existing resources and appends default demo datasets.</div>
@@ -315,9 +317,9 @@ function DemoDataModal({ open, setOpen, onConfirm }) {
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={() => { onConfirm(mode); setOpen(false) }}>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="ghost" onClick={() => setOpen(false)} className="w-full sm:w-auto text-xs">Cancel</Button>
+          <Button onClick={() => { onConfirm(mode); setOpen(false) }} className="w-full sm:w-auto text-xs">
             Confirm &amp; Load Demo Data
           </Button>
         </DialogFooter>
@@ -329,14 +331,14 @@ function DemoDataModal({ open, setOpen, onConfirm }) {
 // ============================ SIDEBAR & MOBILE CHROME ============================
 function Sidebar({ active, setActive }) {
   return (
-    <aside className="hidden md:flex md:w-64 flex-col border-r border-border bg-sidebar text-sidebar-foreground sticky top-0 h-screen">
-      <div className="h-16 flex items-center gap-2 px-6 border-b border-border">
-        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 grid place-items-center shadow-lg shadow-blue-500/20">
+    <aside className="hidden md:flex md:w-60 lg:w-64 flex-col border-r border-border bg-sidebar text-sidebar-foreground sticky top-0 h-screen shrink-0">
+      <div className="h-16 flex items-center gap-2.5 px-5 lg:px-6 border-b border-border">
+        <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 grid place-items-center shadow-lg shadow-blue-500/20 shrink-0">
           <Cloud className="h-5 w-5 text-white" />
         </div>
-        <div>
-          <div className="font-semibold tracking-tight">Cloud-Cost-Pulse</div>
-          <div className="text-[10px] uppercase tracking-widest text-muted-foreground">v3.0 FinOps SaaS</div>
+        <div className="min-w-0">
+          <div className="font-semibold tracking-tight truncate text-sm lg:text-base">Cloud-Cost-Pulse</div>
+          <div className="text-[10px] uppercase tracking-widest text-muted-foreground">FinOps SaaS</div>
         </div>
       </div>
       <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
@@ -345,16 +347,16 @@ function Sidebar({ active, setActive }) {
           const is = active === n.id
           return (
             <button key={n.id} onClick={() => setActive(n.id)}
-              className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${is ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}>
-              <Icon className="h-4 w-4" />
-              <span>{n.label}</span>
+              className={`w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${is ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}>
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="truncate">{n.label}</span>
             </button>
           )
         })}
       </nav>
-      <div className="m-3 rounded-xl border border-border bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-transparent p-4">
-        <div className="flex items-center gap-2 text-sm font-medium"><Users className="h-4 w-4 text-purple-400" /> Team workspaces</div>
-        <p className="mt-2 text-xs text-muted-foreground">Switch to a Clerk organization in the top bar to share one budget &amp; dashboard with your team.</p>
+      <div className="m-3 rounded-xl border border-border bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-transparent p-3.5">
+        <div className="flex items-center gap-2 text-xs font-semibold"><Users className="h-4 w-4 text-purple-400 shrink-0" /> Team workspaces</div>
+        <p className="mt-1.5 text-[11px] text-muted-foreground leading-relaxed">Switch to a Clerk organization in the top bar to share one budget &amp; dashboard with your team.</p>
       </div>
     </aside>
   )
@@ -362,47 +364,136 @@ function Sidebar({ active, setActive }) {
 
 function MobileNav({ active, setActive }) {
   return (
-    <div className="md:hidden sticky top-16 z-20 border-b border-border bg-background/80 backdrop-blur">
-      <div className="flex gap-1 overflow-x-auto px-2 py-2 no-scrollbar">
-        {NAV.map((n) => (
-          <button key={n.id} onClick={() => setActive(n.id)}
-            className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium ${active === n.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground bg-muted/40'}`}>
-            {n.label}
-          </button>
-        ))}
+    <div className="md:hidden sticky top-16 z-20 border-b border-border/80 bg-background/95 backdrop-blur-md shadow-sm">
+      <div className="flex gap-1.5 overflow-x-auto px-2.5 py-2 no-scrollbar scroll-smooth">
+        {NAV.map((n) => {
+          const Icon = n.icon
+          const is = active === n.id
+          return (
+            <button
+              key={n.id}
+              onClick={() => setActive(n.id)}
+              className={`shrink-0 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                is
+                  ? 'bg-primary text-primary-foreground shadow-sm font-semibold'
+                  : 'text-muted-foreground bg-muted/40 hover:bg-muted/70 hover:text-foreground'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span>{n.label}</span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
 }
 
-function NotificationBell({ notif, onRead, onReadAll }) {
-  const iconFor = (s) => s === 'error' ? <AlertTriangle className="h-4 w-4 text-red-400" /> : s === 'warning' ? <AlertTriangle className="h-4 w-4 text-amber-400" /> : s === 'success' ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Info className="h-4 w-4 text-blue-400" />
+function formatRelativeTime(date) {
+  if (!date) return ''
+  const d = new Date(date)
+  const now = new Date()
+  const diffSec = Math.floor((now - d) / 1000)
+  if (diffSec < 45) return 'Just now'
+  if (diffSec < 3600) return `${Math.max(1, Math.floor(diffSec / 60))}m ago`
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`
+  if (diffSec < 172800) return 'Yesterday'
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function NotificationBell({ notif, onRead, onReadAll, onReadItem, onDeleteItem, onClearAll }) {
+  const [tab, setTab] = useState('all')
+  const iconFor = (s) => s === 'error' ? <AlertTriangle className="h-4 w-4 text-red-400 shrink-0" /> : s === 'warning' ? <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" /> : s === 'success' ? <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" /> : <Info className="h-4 w-4 text-blue-400 shrink-0" />
   const unread = notif?.unread || 0
+  const items = notif?.items || []
+  const displayedItems = tab === 'unread' ? items.filter(n => !n.read) : items
+
   return (
     <DropdownMenu onOpenChange={(o) => { if (o) onRead?.() }}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
+        <Button variant="ghost" size="icon" className="relative h-8 w-8 sm:h-9 sm:w-9 hover:bg-muted/60" title="Notifications">
           <Bell className="h-4 w-4" />
-          {unread > 0 && <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-red-500 text-[9px] text-white grid place-items-center">{unread > 9 ? '9+' : unread}</span>}
+          {unread > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-red-500 text-[9px] font-bold text-white grid place-items-center animate-pulse">
+              {unread > 9 ? '9+' : unread}
+            </span>
+          )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80">
-        <div className="flex items-center justify-between px-2 py-1.5">
-          <DropdownMenuLabel className="p-0">Notifications</DropdownMenuLabel>
-          {unread > 0 && <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={onReadAll}>Mark all read</Button>}
+      <DropdownMenuContent align="end" className="w-[340px] sm:w-[360px] max-w-[95vw] p-0 shadow-2xl border-border/80 bg-popover">
+        <div className="p-3 border-b border-border/60 bg-muted/20">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-sm">Notifications</span>
+              {unread > 0 && <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-red-500/10 text-red-400 font-mono">{unread} new</Badge>}
+            </div>
+            <div className="flex items-center gap-1">
+              {unread > 0 && (
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground" onClick={onReadAll} title="Mark all read">
+                  <Check className="h-3 w-3 mr-1" /> Mark all read
+                </Button>
+              )}
+              {items.length > 0 && (
+                <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[11px] text-muted-foreground hover:text-red-400" onClick={onClearAll} title="Clear all notifications">
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-1 mt-2">
+            <button
+              onClick={() => setTab('all')}
+              className={`px-2.5 py-0.5 rounded text-xs font-medium transition-colors ${tab === 'all' ? 'bg-primary/20 text-primary font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              All ({items.length})
+            </button>
+            <button
+              onClick={() => setTab('unread')}
+              className={`px-2.5 py-0.5 rounded text-xs font-medium transition-colors ${tab === 'unread' ? 'bg-primary/20 text-primary font-semibold' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Unread ({unread})
+            </button>
+          </div>
         </div>
-        <DropdownMenuSeparator />
-        <ScrollArea className="h-80">
-          {(notif?.items || []).length === 0 ? (
-            <div className="p-6 text-center text-sm text-muted-foreground">No notifications yet</div>
+
+        <ScrollArea className="h-72 sm:h-80">
+          {displayedItems.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
+              <CheckCircle2 className="h-8 w-8 text-muted-foreground/40" />
+              <span>{tab === 'unread' ? 'No unread notifications' : 'No notifications yet'}</span>
+            </div>
           ) : (
-            (notif.items || []).map((n) => (
-              <div key={n.id} className={`flex gap-2 px-3 py-2.5 border-b border-border/50 ${!n.read ? 'bg-muted/30' : ''}`}>
+            displayedItems.map((n) => (
+              <div
+                key={n.id}
+                onClick={() => { if (!n.read) onReadItem?.(n.id) }}
+                className={`group flex items-start gap-2.5 px-3 py-2.5 border-b border-border/40 hover:bg-muted/40 transition-colors cursor-pointer ${!n.read ? 'bg-primary/5' : ''}`}
+              >
                 <div className="mt-0.5">{iconFor(n.severity)}</div>
-                <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{n.title}</div>
-                  <div className="text-xs text-muted-foreground">{n.message}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">{new Date(n.created_at).toLocaleString()}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className={`text-xs font-medium truncate ${!n.read ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>{n.title}</span>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{formatRelativeTime(n.created_at)}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">{n.message}</div>
+                </div>
+                <div className="flex items-center gap-1 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  {!n.read && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onReadItem?.(n.id) }}
+                      className="p-1 text-muted-foreground hover:text-foreground rounded"
+                      title="Mark as read"
+                    >
+                      <Check className="h-3 w-3" />
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDeleteItem?.(n.id) }}
+                    className="p-1 text-muted-foreground hover:text-red-400 rounded"
+                    title="Dismiss"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 </div>
               </div>
             ))
@@ -413,51 +504,56 @@ function NotificationBell({ notif, onRead, onReadAll }) {
   )
 }
 
-function Topbar({ active, onOpenDemoModal, onOpenImportModal, onOpenSearch, dataSource, currency, onCurrency, notif, onReadNotif, onReadAll, isDemoPreview, onExitDemo }) {
+function Topbar({ active, onOpenDemoModal, onOpenImportModal, onOpenSearch, dataSource, currency, onCurrency, notif, onReadNotif, onReadAll, onReadItem, onDeleteItem, onClearAll, isDemoPreview, onExitDemo }) {
   const { theme, setTheme } = useTheme()
   const title = NAV.find((n) => n.id === active)?.label || 'Dashboard'
   return (
     <header className="h-16 border-b border-border bg-background/60 backdrop-blur-xl sticky top-0 z-30">
-      <div className="h-full px-3 md:px-6 flex items-center gap-2 md:gap-3">
-        <div className="min-w-0">
-          <div className="text-[10px] md:text-xs text-muted-foreground truncate">FinOps Console</div>
-          <div className="text-base md:text-lg font-semibold leading-none flex items-center gap-2 truncate">
-            <span>{title}</span>
-            {isDemoPreview ? (
-              <Badge className="bg-purple-500/20 text-purple-400 hover:bg-purple-500/20 text-[10px]">Demo Preview</Badge>
-            ) : dataSource === 'azure' ? (
-              <Badge className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 text-[10px]">Live Azure</Badge>
-            ) : dataSource === 'empty' ? (
-              <Badge variant="outline" onClick={onOpenImportModal} className="text-[10px] cursor-pointer hover:bg-primary/20 hover:text-primary transition-colors border-primary/40">+ Connect data</Badge>
-            ) : (
-              <Badge variant="secondary" className="text-[10px]">Demo data</Badge>
-            )}
+      <div className="h-full px-2.5 sm:px-4 md:px-6 flex items-center justify-between gap-2">
+        <div className="min-w-0 flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="text-[10px] sm:text-xs text-muted-foreground truncate">FinOps Console</div>
+            <div className="text-sm sm:text-base md:text-lg font-semibold leading-none flex items-center gap-1.5 sm:gap-2 truncate">
+              <span className="truncate">{title}</span>
+              {isDemoPreview ? (
+                <Badge className="bg-purple-500/20 text-purple-400 hover:bg-purple-500/20 text-[9px] sm:text-[10px] shrink-0">Demo</Badge>
+              ) : dataSource === 'azure' ? (
+                <Badge className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 text-[9px] sm:text-[10px] shrink-0">Azure</Badge>
+              ) : dataSource === 'empty' ? (
+                <Badge variant="outline" onClick={onOpenImportModal} className="text-[9px] sm:text-[10px] cursor-pointer hover:bg-primary/20 hover:text-primary transition-colors border-primary/40 shrink-0">+ Connect</Badge>
+              ) : (
+                <Badge variant="secondary" className="text-[9px] sm:text-[10px] shrink-0">Demo</Badge>
+              )}
+            </div>
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-1.5 md:gap-2">
+        <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 shrink-0">
           {isDemoPreview ? (
-            <Button size="sm" variant="secondary" onClick={onExitDemo} className="text-xs bg-purple-500/15 text-purple-400 hover:bg-purple-500/25">
-              Exit Demo View
+            <Button size="sm" variant="secondary" onClick={onExitDemo} className="text-xs bg-purple-500/15 text-purple-400 hover:bg-purple-500/25 h-8">
+              Exit Demo
             </Button>
           ) : (
             <>
-              <Button variant="outline" size="sm" onClick={onOpenSearch} className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground bg-muted/40">
+              <Button variant="ghost" size="icon" onClick={onOpenSearch} className="h-8 w-8 lg:hidden text-muted-foreground" title="Search">
+                <Search className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={onOpenSearch} className="hidden lg:flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 h-8 sm:h-9">
                 <Search className="h-3.5 w-3.5" />
                 <span>Search...</span>
                 <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">⌘K</kbd>
               </Button>
-              <Button variant="outline" size="sm" onClick={onOpenImportModal} className="hidden sm:flex items-center gap-1 text-xs">
+              <Button variant="outline" size="sm" onClick={onOpenImportModal} className="hidden sm:flex items-center gap-1 text-xs h-8 sm:h-9">
                 <Upload className="h-3.5 w-3.5 mr-1" /> Import
               </Button>
               <Select value={currency} onValueChange={onCurrency}>
-                <SelectTrigger className="w-[76px] sm:w-[84px] h-8 sm:h-9 bg-muted/40 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-[68px] sm:w-[84px] h-8 sm:h-9 bg-muted/40 text-xs px-2"><SelectValue /></SelectTrigger>
                 <SelectContent>{CURRENCIES.map((c) => <SelectItem key={c} value={c}>{symFor(c)} {c}</SelectItem>)}</SelectContent>
               </Select>
               <OrganizationSwitcher afterSelectOrganizationUrl="/" afterSelectPersonalUrl="/" hidePersonal={false}
                 appearance={{ elements: { rootBox: 'hidden md:flex items-center', organizationSwitcherTrigger: 'px-2 py-1.5 rounded-lg border border-border bg-muted/40 text-foreground text-xs' } }} />
               <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={onOpenDemoModal} title="Load Demo Data"><RefreshCw className="h-4 w-4" /></Button>
               <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</Button>
-              <NotificationBell notif={notif} onRead={onReadNotif} onReadAll={onReadAll} />
+              <NotificationBell notif={notif} onRead={onReadNotif} onReadAll={onReadAll} onReadItem={onReadItem} onDeleteItem={onDeleteItem} onClearAll={onClearAll} />
               <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: 'h-7 w-7 sm:h-8 sm:w-8' } }} />
             </>
           )}
@@ -652,6 +748,35 @@ function EmptyChart() {
     </div>
   )
 }
+// ============================ TIME RANGE OPTIONS ============================
+const TIME_RANGES = [
+  { value: 'all', label: 'Overall (All)', shortLabel: 'All', months: Infinity },
+  { value: '1m', label: '1 Month (1M)', shortLabel: '1M', months: 1 },
+  { value: '3m', label: '3 Months (3M)', shortLabel: '3M', months: 3 },
+  { value: '6m', label: '6 Months (6M)', shortLabel: '6M', months: 6 },
+  { value: '1y', label: '1 Year (1Y)', shortLabel: '1Y', months: 12 },
+]
+
+/** Parse "Mon YYYY" label into a Date object for filtering */
+function parseMonthLabel(label) {
+  if (!label || typeof label !== 'string') return null
+  const MONTH_MAP = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
+  const parts = label.trim().split(/\s+/)
+  if (parts.length < 2) return null
+  const month = MONTH_MAP[parts[0].toLowerCase().slice(0, 3)]
+  const year = parseInt(parts[parts.length - 1], 10)
+  if (month === undefined || isNaN(year)) return null
+  return new Date(year, month, 1)
+}
+
+function filterDataByTimeRange(data, nameKey, rangeValue) {
+  if (!data || !Array.isArray(data) || data.length === 0 || rangeValue === 'all') return data
+  const rangeDef = TIME_RANGES.find(r => r.value === rangeValue)
+  if (!rangeDef || rangeDef.months === Infinity) return data
+  const m = rangeDef.months
+  if (data.length <= m) return data
+  return data.slice(-m)
+}
 
 // ============================ COLOR THEME PRESETS ============================
 const CHART_THEMES = {
@@ -669,9 +794,11 @@ function EnhancedChart({
   extraLines = [], pieData, pieInnerRadius = 55, pieOuterRadius = 80,
   height = 'h-72 sm:h-80', showBrush = false, showTrend = false,
   showAnnotations = false, children, headerAction, className = '',
+  globalTimeRange, onTimeRangeChange, trendData: trendHistory,
 }) {
   const [chartType, setChartType] = useState(defaultType)
   const [theme, setTheme] = useState('default')
+  const [timeRange, setTimeRange] = useState(globalTimeRange || 'all')
   const [showTrendLine, setShowTrendLine] = useState(showTrend)
   const [showRefLines, setShowRefLines] = useState(showAnnotations)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -681,17 +808,47 @@ function EnhancedChart({
   const sym = symFor(currency)
   const colors = CHART_THEMES[theme]
 
-  // Compute moving average trend line
-  const trendData = data && showTrendLine ? data.map((item, i, arr) => {
+  // Sync with global time range when updated
+  useEffect(() => {
+    if (globalTimeRange) {
+      setTimeRange(globalTimeRange)
+    }
+  }, [globalTimeRange])
+
+  // Apply time range filter to time-series data
+  const filteredData = !pieData ? filterDataByTimeRange(data, nameKey, timeRange) : data
+
+  // Apply time range to pie / distribution data
+  let activePieData = pieData
+  if (pieData && Array.isArray(pieData)) {
+    if (trendHistory && Array.isArray(trendHistory) && timeRange !== 'all') {
+      const trendSlice = filterDataByTimeRange(trendHistory, 'month', timeRange)
+      if (trendSlice && trendSlice.length > 0) {
+        activePieData = pieData.map(p => {
+          const key = p.key || (p.name ? String(p.name).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') : '')
+          const sum = trendSlice.reduce((acc, t) => acc + (t[key] || 0), 0)
+          return { ...p, value: sum > 0 ? Math.round(sum) : p.value }
+        }).filter(p => p.value > 0).sort((a, b) => b.value - a.value)
+      }
+    } else if (timeRange !== 'all') {
+      const mult = timeRange === '1m' ? 1 : timeRange === '3m' ? 3 : timeRange === '6m' ? 6 : timeRange === '1y' ? 12 : 1
+      if (mult > 1) {
+        activePieData = pieData.map(p => ({ ...p, value: Math.round(p.value * mult) }))
+      }
+    }
+  }
+
+  // Compute moving average trend line (using filtered data)
+  const trendData = filteredData && showTrendLine ? filteredData.map((item, i, arr) => {
     const window = 3
     const start = Math.max(0, i - window + 1)
     const slice = arr.slice(start, i + 1)
     const avg = slice.reduce((s, d) => s + (d[dataKey] || 0), 0) / slice.length
     return { ...item, _trend: Math.round(avg) }
-  }) : data
+  }) : filteredData
 
-  // Compute reference values
-  const values = data ? data.map(d => d[dataKey] || 0).filter(v => v > 0) : []
+  // Compute reference values (using filtered data)
+  const values = filteredData ? filteredData.map(d => d[dataKey] || 0).filter(v => v > 0) : []
   const avgVal = values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0
   const maxVal = values.length ? Math.max(...values) : 0
   const minVal = values.length ? Math.min(...values) : 0
@@ -883,6 +1040,41 @@ function EnhancedChart({
 
   const controlBar = (
     <div className={`flex flex-wrap items-center gap-1.5 ${showControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-300`}>
+      {/* Time Range Selector - Enabled for ALL charts */}
+      {((data && data.length > 0) || (pieData && pieData.length > 0)) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-md border text-xs font-medium transition-all duration-200 ${
+                timeRange !== 'all'
+                  ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-400 font-semibold'
+                  : 'border-border/60 text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+              title="Select time range"
+            >
+              <CalendarDays className="h-3.5 w-3.5 text-cyan-400" />
+              <span>{TIME_RANGES.find(r => r.value === timeRange)?.shortLabel || 'All'}</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[130px]">
+            <DropdownMenuLabel className="text-xs">Time Range</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {TIME_RANGES.map(r => (
+              <DropdownMenuItem
+                key={r.value}
+                onClick={() => {
+                  setTimeRange(r.value)
+                  onTimeRangeChange?.(r.value)
+                }}
+                className="gap-2 text-xs cursor-pointer"
+              >
+                <span>{r.label}</span>
+                {timeRange === r.value && <Check className="h-3.5 w-3.5 ml-auto text-primary" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       {/* Chart type switcher */}
       {!pieData && allowTypes.length > 1 && (
         <div className="flex items-center rounded-md border border-border/60 bg-muted/30 p-0.5">
@@ -902,7 +1094,7 @@ function EnhancedChart({
         </div>
       )}
       {/* Trend line toggle */}
-      {!pieData && data && data.length > 2 && (
+      {!pieData && filteredData && filteredData.length > 2 && (
         <button
           onClick={() => setShowTrendLine(p => !p)}
           className={`p-1.5 rounded-md border transition-all duration-200 ${showTrendLine ? 'border-amber-500/50 bg-amber-500/10 text-amber-400' : 'border-border/60 text-muted-foreground hover:text-foreground'}`}
@@ -986,7 +1178,14 @@ function EnhancedChart({
       <Card ref={chartRef} className={`group transition-all duration-300 ${fullscreenClasses} ${className}`}>
         <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
           <div className="min-w-0 flex-1">
-            <CardTitle className="text-base sm:text-lg">{title}</CardTitle>
+            <div className="flex items-center gap-2 flex-wrap">
+              <CardTitle className="text-base sm:text-lg">{title}</CardTitle>
+              {timeRange !== 'all' && (
+                <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-cyan-500/40 bg-cyan-500/10 text-cyan-400 font-mono">
+                  {TIME_RANGES.find(r => r.value === timeRange)?.shortLabel} Range
+                </Badge>
+              )}
+            </div>
             <CardDescription className="text-xs">{description}</CardDescription>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -996,9 +1195,9 @@ function EnhancedChart({
         </CardHeader>
         <CardContent className={isFullscreen ? 'h-[calc(100%-100px)] p-6 overflow-y-auto' : height}>
           {pieData ? (
-            pieData.length === 0 ? <EmptyChart /> : (() => {
-              const totalPieValue = pieData.reduce((s, d) => s + (d.value || 0), 0)
-              const enrichedPieData = pieData.map((d, i) => ({
+            activePieData.length === 0 ? <EmptyChart /> : (() => {
+              const totalPieValue = activePieData.reduce((s, d) => s + (d.value || 0), 0)
+              const enrichedPieData = activePieData.map((d, i) => ({
                 ...d,
                 color: d.color || [CHART_THEMES[theme].primary, CHART_THEMES[theme].secondary, CHART_THEMES[theme].tertiary, '#06b6d4', '#f59e0b', '#10b981', '#ec4899'][i % 7],
                 percent: totalPieValue > 0 ? d.value / totalPieValue : 0
@@ -1131,10 +1330,12 @@ function EnhancedChart({
               )
             })()
           ) : (
-            data ? (showTrendLine ? renderTimeSeriesChart(trendData) : renderTimeSeriesChart(data)) : <EmptyChart />
+            <>
+              {renderTimeSeriesChart(trendData)}
+              {statsBar}
+            </>
           )}
         </CardContent>
-        {statsBar}
       </Card>
     </>
   )
@@ -1175,11 +1376,17 @@ function RecCard({ r, currency, onApply }) {
 
 // ============================ DASHBOARD PAGE ============================
 function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, onApplyRec }) {
+  const [timeRange, setTimeRange] = useState('all')
   if (!data) return <LoadingGrid />
   const { stats, services, trend, serviceBreakdown, forecast, budget, recommendations } = data
   const currency = data.currency || 'INR'
   const fmt = fmtFor(currency)
   const sym = symFor(currency)
+
+  // Budget vs Spend history for multi-month comparison
+  const budgetSpendData = Array.isArray(trend)
+    ? trend.map(t => ({ name: t.month, month: t.month, Actual: t.total, Budget: budget.monthly_budget }))
+    : [{ name: 'Budget Health', Budget: budget.monthly_budget, Actual: budget.used }]
 
   return (
     <div className="space-y-6">
@@ -1192,6 +1399,40 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
         <StatCard icon={TrendingUp} label="Forecast Cost" value={fmt(forecast.expectedCost)} sub="based on 3 mo avg" tone="pink" />
         <StatCard icon={Lightbulb} label="Potential Savings" value={fmt(stats.potentialSavings)} sub="identified optimizations" tone="green" />
         <StatCard icon={Activity} label="Cost Growth" value={`${stats.growth >= 0 ? '+' : ''}${stats.growth}%`} sub="month-over-month" tone={stats.growth > 0 ? 'amber' : 'green'} />
+      </div>
+
+      {/* Global Dashboard Time Range Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border border-border/60 bg-muted/20 backdrop-blur-sm">
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-lg bg-primary/10 grid place-items-center text-primary">
+            <BarChart3 className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold flex items-center gap-2">
+              <span>Interactive FinOps Visualizations</span>
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" title="Live data" />
+            </div>
+            <div className="text-[11px] text-muted-foreground">Adjust global time range across all 7 charts or customize each individually</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 bg-background/80 p-1 rounded-lg border border-border/60 self-start sm:self-auto">
+          <span className="text-[11px] font-medium text-muted-foreground px-2 flex items-center gap-1">
+            <CalendarDays className="h-3 w-3 text-cyan-400" /> Range:
+          </span>
+          {TIME_RANGES.map(r => (
+            <button
+              key={r.value}
+              onClick={() => setTimeRange(r.value)}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                timeRange === r.value
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+              }`}
+            >
+              {r.shortLabel || r.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Primary 7 Charts Grid */}
@@ -1208,6 +1449,7 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
           showTrend={true}
           showAnnotations={true}
           showBrush={true}
+          globalTimeRange={timeRange}
           className="lg:col-span-2"
           headerAction={<Button variant="outline" size="sm" onClick={() => generatePDFReport(data)} className="hidden sm:flex">Export PDF</Button>}
         />
@@ -1217,6 +1459,8 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
           title="2. Service Distribution"
           description="Cost share by active cloud service"
           pieData={serviceBreakdown}
+          trendData={trend}
+          globalTimeRange={timeRange}
           currency={currency}
         />
       </div>
@@ -1225,20 +1469,21 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
         {/* Chart 3: Budget vs Spend */}
         <EnhancedChart
           title="3. Budget vs Actual Spend"
-          description="Allocated budget vs total current consumption"
-          data={[{ name: 'Budget Health', Budget: budget.monthly_budget, Actual: budget.used }]}
+          description="Allocated budget vs total current consumption over selected horizon"
+          data={budgetSpendData}
           dataKey="Actual"
           nameKey="name"
           currency={currency}
           defaultType="bar"
           extraLines={[{ dataKey: 'Budget', name: 'Budget Limit', color: '#3b82f6' }]}
           showAnnotations={true}
+          globalTimeRange={timeRange}
         />
 
         {/* Chart 4: Cost Forecast */}
         <EnhancedChart
           title="4. Cost Forecast (Next 3 Months)"
-          description="Projected spending based on 3-month rolling average"
+          description="Projected spending based on rolling average"
           data={forecast.series}
           dataKey="actual"
           nameKey="month"
@@ -1247,6 +1492,7 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
           extraLines={[{ dataKey: 'forecast', name: 'Forecast', color: '#ec4899', dashed: true }]}
           showTrend={true}
           showAnnotations={true}
+          globalTimeRange={timeRange}
         />
       </div>
 
@@ -1259,6 +1505,7 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
             { name: 'Active Resources', value: stats.activeResources, color: '#10b981' },
             { name: 'Idle / Inactive', value: Math.max(0, stats.totalResources - stats.activeResources), color: '#f59e0b' },
           ]}
+          globalTimeRange={timeRange}
           currency={currency}
         />
 
@@ -1576,6 +1823,8 @@ function ResourcesPage({ currency, onDataChange, externalSearch }) {
 // ============================ ANALYTICS PAGE ============================
 function AnalyticsPage({ data }) {
   const [analyticsData, setAnalyticsData] = useState(null)
+  const [timeRange, setTimeRange] = useState('all')
+
   useEffect(() => {
     fetch('/api/analytics').then((r) => r.json()).then((j) => setAnalyticsData(j))
   }, [data])
@@ -1587,76 +1836,120 @@ function AnalyticsPage({ data }) {
   const regionBreakdown = analyticsData.regionBreakdown || []
   const ownerBreakdown = analyticsData.ownerBreakdown || []
   const departmentBreakdown = analyticsData.departmentBreakdown || []
+  const trendHistory = analyticsData.trend || data?.trend || []
 
   return (
-    <Tabs defaultValue="service" className="space-y-6">
-      <TabsList className="bg-muted/40 overflow-x-auto no-scrollbar">
-        <TabsTrigger value="service">Service Analysis</TabsTrigger>
-        <TabsTrigger value="region">Region Analysis</TabsTrigger>
-        <TabsTrigger value="owner">Owner Analysis</TabsTrigger>
-        <TabsTrigger value="department">Department Analysis</TabsTrigger>
-      </TabsList>
+    <div className="space-y-6">
+      {/* Global Analytics Time Range Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border border-border/60 bg-muted/20 backdrop-blur-sm">
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-lg bg-primary/10 grid place-items-center text-primary">
+            <BarChart3 className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold flex items-center gap-2">
+              <span>Deep-Dive Cost Analytics</span>
+              <Badge variant="outline" className="text-[10px] text-primary border-primary/30 font-mono">4 Dimensions</Badge>
+            </div>
+            <div className="text-[11px] text-muted-foreground">Analyze spending distribution by service, region, owner and department across time horizons</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 bg-background/80 p-1 rounded-lg border border-border/60 self-start sm:self-auto">
+          <span className="text-[11px] font-medium text-muted-foreground px-2 flex items-center gap-1">
+            <CalendarDays className="h-3 w-3 text-cyan-400" /> Range:
+          </span>
+          {TIME_RANGES.map(r => (
+            <button
+              key={r.value}
+              onClick={() => setTimeRange(r.value)}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                timeRange === r.value
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+              }`}
+            >
+              {r.shortLabel || r.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <TabsContent value="service" className="space-y-6">
-        <div className="grid gap-4 lg:grid-cols-2">
+      <Tabs defaultValue="service" className="space-y-6">
+        <TabsList className="bg-muted/40 overflow-x-auto no-scrollbar">
+          <TabsTrigger value="service">Service Analysis</TabsTrigger>
+          <TabsTrigger value="region">Region Analysis</TabsTrigger>
+          <TabsTrigger value="owner">Owner Analysis</TabsTrigger>
+          <TabsTrigger value="department">Department Analysis</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="service" className="space-y-6">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <EnhancedChart
+              title="Service Cost Distribution"
+              description="Spend per cloud service with customizable visualization"
+              data={serviceBreakdown}
+              dataKey="value"
+              nameKey="name"
+              currency={currency}
+              defaultType="bar"
+              showAnnotations={true}
+              globalTimeRange={timeRange}
+              trendData={trendHistory}
+            />
+            <EnhancedChart
+              title="Service Share %"
+              description="Proportional spend share by cloud service"
+              pieData={serviceBreakdown}
+              currency={currency}
+              globalTimeRange={timeRange}
+              trendData={trendHistory}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="region" className="space-y-6">
           <EnhancedChart
-            title="Service Cost Distribution"
-            description="Current active spend per cloud service with customizable visualization"
-            data={serviceBreakdown}
+            title="Region Cost Breakdown"
+            description="Cloud spending grouped by geographic region with reference markers"
+            data={regionBreakdown}
             dataKey="value"
             nameKey="name"
             currency={currency}
             defaultType="bar"
             showAnnotations={true}
+            globalTimeRange={timeRange}
           />
+        </TabsContent>
+
+        <TabsContent value="owner" className="space-y-6">
           <EnhancedChart
-            title="Service Share %"
-            description="Proportional spend share by cloud service"
-            pieData={serviceBreakdown}
+            title="Owner & Team Spend"
+            description="Cost distribution across platform teams with interactive trend analysis"
+            data={ownerBreakdown}
+            dataKey="value"
+            nameKey="name"
             currency={currency}
+            defaultType="bar"
+            showAnnotations={true}
+            globalTimeRange={timeRange}
           />
-        </div>
-      </TabsContent>
+        </TabsContent>
 
-      <TabsContent value="region" className="space-y-6">
-        <EnhancedChart
-          title="Region Cost Breakdown"
-          description="Cloud spending grouped by geographic region with reference markers"
-          data={regionBreakdown}
-          dataKey="value"
-          nameKey="name"
-          currency={currency}
-          defaultType="bar"
-          showAnnotations={true}
-        />
-      </TabsContent>
-
-      <TabsContent value="owner" className="space-y-6">
-        <EnhancedChart
-          title="Owner & Team Spend"
-          description="Cost distribution across platform teams with interactive trend analysis"
-          data={ownerBreakdown}
-          dataKey="value"
-          nameKey="name"
-          currency={currency}
-          defaultType="bar"
-          showAnnotations={true}
-        />
-      </TabsContent>
-
-      <TabsContent value="department" className="space-y-6">
-        <EnhancedChart
-          title="Department Spend Breakdown"
-          description="Engineering vs Data Science vs DevOps cost allocation"
-          data={departmentBreakdown}
-          dataKey="value"
-          nameKey="name"
-          currency={currency}
-          defaultType="bar"
-          showAnnotations={true}
-        />
-      </TabsContent>
-    </Tabs>
+        <TabsContent value="department" className="space-y-6">
+          <EnhancedChart
+            title="Department Spend Breakdown"
+            description="Engineering vs Data Science vs DevOps cost allocation"
+            data={departmentBreakdown}
+            dataKey="value"
+            nameKey="name"
+            currency={currency}
+            defaultType="bar"
+            showAnnotations={true}
+            globalTimeRange={timeRange}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
   )
 }
 
@@ -1846,6 +2139,7 @@ function SettingsPage({ refresh, currency, onCurrency }) {
   const [az, setAz] = useState({ tenantId: '', clientId: '', clientSecret: '', subscriptionId: '' })
   const [em, setEm] = useState({ apiKey: '', recipient: '' })
   const [rules, setRules] = useState({ idleCostThreshold: 500, spikePct: 25, budgetWarnPct: 80 })
+  const [notifPrefs, setNotifPrefs] = useState({ inApp: true, budgetAlerts: true, optAlerts: true, emailAlerts: true })
   const [busy, setBusy] = useState('')
 
   const loadSettings = async () => {
@@ -1853,6 +2147,7 @@ function SettingsPage({ refresh, currency, onCurrency }) {
       const res = await fetch('/api/settings'); const j = await res.json(); setSettings(j)
       if (j?.rules) setRules(j.rules)
       if (j?.email?.recipient) setEm((p) => ({ ...p, recipient: j.email.recipient }))
+      if (j?.notification_prefs) setNotifPrefs(j.notification_prefs)
     } catch { toast.error('Failed to load settings') }
   }
   useEffect(() => { loadSettings() }, [])
@@ -1870,7 +2165,18 @@ function SettingsPage({ refresh, currency, onCurrency }) {
   const saveEmail = async () => { if (!em.apiKey && !em.recipient) { toast.error('Enter a Resend API key and/or recipient'); return } try { await post('/api/settings/email', em, 'email'); toast.success('Email settings saved'); setEm((p) => ({ ...p, apiKey: '' })); await loadSettings(); refresh() } catch (e) { toast.error('Failed to save', { description: e.message }) } }
   const testEmail = async () => { try { const j = await post('/api/settings/email/test', {}, 'test'); toast.success('Test email sent!', { description: `Resend ID: ${j.emailId}` }) } catch (e) { toast.error('Test email failed', { description: e.message, duration: 9000 }) } }
   const saveRules = async () => { try { const j = await post('/api/settings/rules', rules, 'rules'); toast.success('Rules saved'); setRules(j.rules); refresh() } catch (e) { toast.error('Failed to save rules', { description: e.message }) } }
-  
+
+  const saveNotifPrefs = async (nextPrefs) => {
+    setNotifPrefs(nextPrefs)
+    try {
+      await post('/api/settings/notifications', nextPrefs, 'notif')
+      toast.success('Notification preferences updated')
+      refresh?.()
+    } catch {
+      toast.error('Failed to save notification preferences')
+    }
+  }
+
   const exportBackup = async () => {
     try {
       const res = await fetch('/api/settings/export', { method: 'POST' })
@@ -1887,6 +2193,49 @@ function SettingsPage({ refresh, currency, onCurrency }) {
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><SettingsIcon className="h-5 w-5 text-cyan-400" /> Preferences</CardTitle><CardDescription>Currency applies across dashboards, charts, budgets and reports.</CardDescription></CardHeader>
         <CardContent><div className="flex items-center gap-3"><Label className="w-32">Display currency</Label><Select value={currency} onValueChange={onCurrency}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent>{CURRENCIES.map((c) => <SelectItem key={c} value={c}>{symFor(c)} {c}</SelectItem>)}</SelectContent></Select></div></CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-amber-400" /> Notification &amp; Alert Rules
+          </CardTitle>
+          <CardDescription>
+            Configure in-app alerts, thresholds, and notification delivery options.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="flex items-center justify-between p-3.5 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 transition-colors">
+              <div className="space-y-0.5">
+                <div className="font-medium text-xs sm:text-sm">In-App Notifications</div>
+                <div className="text-[11px] text-muted-foreground">Receive real-time alerts for CRUD operations &amp; reports</div>
+              </div>
+              <Switch checked={notifPrefs.inApp} onCheckedChange={(v) => saveNotifPrefs({ ...notifPrefs, inApp: v })} />
+            </div>
+            <div className="flex items-center justify-between p-3.5 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 transition-colors">
+              <div className="space-y-0.5">
+                <div className="font-medium text-xs sm:text-sm">Budget Threshold Alerts</div>
+                <div className="text-[11px] text-muted-foreground">Alert when monthly spending reaches 80% and 100%</div>
+              </div>
+              <Switch checked={notifPrefs.budgetAlerts} onCheckedChange={(v) => saveNotifPrefs({ ...notifPrefs, budgetAlerts: v })} />
+            </div>
+            <div className="flex items-center justify-between p-3.5 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 transition-colors">
+              <div className="space-y-0.5">
+                <div className="font-medium text-xs sm:text-sm">Optimization Alerts</div>
+                <div className="text-[11px] text-muted-foreground">Notify when AI identifies new cost optimization actions</div>
+              </div>
+              <Switch checked={notifPrefs.optAlerts} onCheckedChange={(v) => saveNotifPrefs({ ...notifPrefs, optAlerts: v })} />
+            </div>
+            <div className="flex items-center justify-between p-3.5 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 transition-colors">
+              <div className="space-y-0.5">
+                <div className="font-medium text-xs sm:text-sm">Email Alert Delivery</div>
+                <div className="text-[11px] text-muted-foreground">Send high-priority alerts via configured Resend email</div>
+              </div>
+              <Switch checked={notifPrefs.emailAlerts} onCheckedChange={(v) => saveNotifPrefs({ ...notifPrefs, emailAlerts: v })} />
+            </div>
+          </div>
+        </CardContent>
       </Card>
 
       <Card>
@@ -2009,7 +2358,12 @@ export default function App() {
   const mainRef = useRef(null)
   const currency = data?.currency || 'INR'
 
-  const loadNotif = useCallback(async () => { try { const r = await fetch('/api/notifications'); if (r.ok) setNotif(await r.json()) } catch {} }, [])
+  const loadNotif = useCallback(async () => {
+    try {
+      const r = await fetch('/api/notifications')
+      if (r.ok) setNotif(await r.json())
+    } catch {}
+  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -2030,8 +2384,10 @@ export default function App() {
   useEffect(() => {
     if (isLoaded && (isSignedIn || demoMode)) {
       load()
+      const interval = setInterval(loadNotif, 20000)
+      return () => clearInterval(interval)
     }
-  }, [isLoaded, isSignedIn, demoMode, load])
+  }, [isLoaded, isSignedIn, demoMode, load, loadNotif])
 
   const handleCurrency = async (nextCurrency) => {
     try {
@@ -2067,9 +2423,35 @@ export default function App() {
   }
 
   const handleReadNotif = () => { loadNotif() }
+
   const handleReadAllNotif = async () => {
-    await fetch('/api/notifications/read-all', { method: 'POST' })
-    loadNotif()
+    try {
+      await fetch('/api/notifications/read-all', { method: 'POST' })
+      loadNotif()
+      toast.success('All notifications marked as read')
+    } catch {}
+  }
+
+  const handleReadItem = async (id) => {
+    try {
+      await fetch(`/api/notifications/${id}`, { method: 'POST' })
+      loadNotif()
+    } catch {}
+  }
+
+  const handleDeleteItem = async (id) => {
+    try {
+      await fetch(`/api/notifications/${id}`, { method: 'DELETE' })
+      loadNotif()
+    } catch {}
+  }
+
+  const handleClearAllNotif = async () => {
+    try {
+      await fetch('/api/notifications/clear-all', { method: 'POST' })
+      loadNotif()
+      toast.success('Notifications cleared')
+    } catch {}
   }
 
   const handleApplyRecommendation = async (recId) => {
@@ -2114,6 +2496,9 @@ export default function App() {
           notif={notif}
           onReadNotif={handleReadNotif}
           onReadAll={handleReadAllNotif}
+          onReadItem={handleReadItem}
+          onDeleteItem={handleDeleteItem}
+          onClearAll={handleClearAllNotif}
           isDemoPreview={demoMode && !isSignedIn}
           onExitDemo={() => setDemoMode(false)}
         />
