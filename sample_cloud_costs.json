@@ -1,0 +1,74 @@
+[
+  {
+    "resource_name": "prod-aks-cluster-primary",
+    "service_type": "Azure Kubernetes Service",
+    "region": "East US",
+    "monthly_cost": 14500,
+    "status": "Active",
+    "owner": "devops",
+    "description": "Main production Kubernetes cluster"
+  },
+  {
+    "resource_name": "sql-db-customer-analytics",
+    "service_type": "Azure SQL Database",
+    "region": "Central India",
+    "monthly_cost": 9200,
+    "status": "Active",
+    "owner": "data-team",
+    "description": "Primary customer analytics DB instance"
+  },
+  {
+    "resource_name": "vm-web-frontend-eastus",
+    "service_type": "Azure Virtual Machine",
+    "region": "East US",
+    "monthly_cost": 6400,
+    "status": "Active",
+    "owner": "web-team",
+    "description": "Core web frontend application VM"
+  },
+  {
+    "resource_name": "blob-storage-logs-archive",
+    "service_type": "Azure Storage",
+    "region": "West Europe",
+    "monthly_cost": 3800,
+    "status": "Active",
+    "owner": "devops",
+    "description": "Historical log archive container"
+  },
+  {
+    "resource_name": "openai-gpt4-prod-endpoint",
+    "service_type": "Azure AI Services",
+    "region": "East US 2",
+    "monthly_cost": 12500,
+    "status": "Active",
+    "owner": "ml-team",
+    "description": "Production Azure OpenAI GPT-4 endpoint"
+  },
+  {
+    "resource_name": "func-image-resizer-worker",
+    "service_type": "Azure Functions",
+    "region": "Central India",
+    "monthly_cost": 850,
+    "status": "Active",
+    "owner": "web-team",
+    "description": "Serverless image resizing function"
+  },
+  {
+    "resource_name": "vm-legacy-analytics-worker",
+    "service_type": "Azure Virtual Machine",
+    "region": "Central India",
+    "monthly_cost": 5200,
+    "status": "Idle",
+    "owner": "data-team",
+    "description": "Unused legacy batch analytics worker"
+  },
+  {
+    "resource_name": "blob-temp-staging-export",
+    "service_type": "Azure Storage",
+    "region": "East US",
+    "monthly_cost": 2900,
+    "status": "Inactive",
+    "owner": "data-team",
+    "description": "Orphaned staging export storage container"
+  }
+]

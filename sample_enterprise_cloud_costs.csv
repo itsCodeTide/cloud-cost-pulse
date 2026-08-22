@@ -1,0 +1,25 @@
+resource_name,service_type,region,monthly_cost,status,owner,description,tags
+prod-aks-cluster-primary,Azure Kubernetes Service,East US,14500,Active,devops,Main production Kubernetes cluster,production critical
+sql-db-customer-analytics,Azure SQL Database,Central India,9200,Active,data-team,Primary customer analytics DB instance,database analytics
+vm-web-frontend-eastus-01,Azure Virtual Machine,East US,6400,Active,web-team,Core web frontend application VM 01,frontend web
+vm-web-frontend-eastus-02,Azure Virtual Machine,East US,6400,Active,web-team,Core web frontend application VM 02,frontend web
+blob-storage-logs-archive,Azure Storage,West Europe,3800,Active,devops,Historical log archive container,logs archive
+openai-gpt4-prod-endpoint,Azure AI Services,East US 2,12500,Active,ml-team,Production Azure OpenAI GPT-4 endpoint,ai ml
+func-image-resizer-worker,Azure Functions,Central India,850,Active,web-team,Serverless image resizing function,serverless
+vm-legacy-analytics-worker,Azure Virtual Machine,Central India,5200,Idle,data-team,Unused legacy batch analytics worker,legacy batch
+blob-temp-staging-export,Azure Storage,East US,2900,Inactive,data-team,Orphaned staging export storage container,staging orphan
+app-service-marketing-site,Azure App Service,UK South,3200,Active,web-team,Production marketing website app service,marketing web
+vm-ml-training-gpu-node,Azure Virtual Machine,East US 2,18500,Active,ml-team,GPU node for model training,ai training
+sql-db-reporting-replica,Azure SQL Database,Central India,4800,Active,data-team,Read replica for reporting queries,reporting DB
+blob-backup-disaster-recovery,Azure Storage,North Europe,5100,Active,devops,DR backups storage container,dr backup
+aks-ingress-controller-node,Azure Kubernetes Service,East US,4200,Active,devops,Ingress router for AKS cluster,ingress router
+func-pdf-generator-service,Azure Functions,Central India,950,Active,web-team,Serverless PDF report builder,pdf serverless
+app-service-internal-tooling,Azure App Service,UK South,1800,Idle,platform-team,Unused internal tool app service,internal idle
+vm-stg-testing-box,Azure Virtual Machine,East US,4100,Inactive,platform-team,Old staging test VM,staging test
+aws-ec2-recommendation-api,AWS EC2,us-east-1,7800,Active,platform-team,AWS EC2 instance hosting recommendation engine,aws api
+aws-s3-media-assets,AWS S3,us-east-1,4200,Active,web-team,AWS S3 bucket for user avatar and media uploads,aws storage
+aws-rds-postgres-main,AWS RDS,us-west-2,11200,Active,data-team,AWS RDS Postgres primary database,aws database
+gcp-compute-data-pipeline,GCP Compute Engine,us-central1,8900,Active,data-team,GCP compute instance for data pipeline,gcp compute
+gcp-storage-bigquery-lake,GCP Cloud Storage,us-central1,6300,Active,data-team,GCP bucket for data lake,gcp lake
+prod-aks-cluster-primary,Azure Kubernetes Service,East US,14500,Active,devops,Duplicate entry for duplicate detection test,duplicate test
+invalid-cost-resource,Azure Virtual Machine,East US,-500,InvalidStatus,devops,Invalid row for parser validation test,invalid test
