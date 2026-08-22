@@ -7,7 +7,8 @@ import {
   Search, Bell, Moon, Sun, Sparkles, AlertTriangle, CheckCircle2, Download,
   LogIn, UserPlus, Plug, Settings as SettingsIcon, Mail, SlidersHorizontal,
   RefreshCw, Unplug, Send, Users, Plus, Pencil, Trash2, Filter, X, Clock, Info, Upload,
-  Database, FileSpreadsheet, ShieldAlert, Check, ChevronRight, Eye, Layers, Shield, Play
+  Database, FileSpreadsheet, ShieldAlert, Check, ChevronRight, Eye, Layers, Shield, Play,
+  Maximize2, Minimize2, Image, BarChart2, LineChart as LineChartIcon, Palette, ZoomIn, ZoomOut, ToggleLeft, Hash
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -18,6 +19,7 @@ import {
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
   PieChart, Pie, Cell, Legend, AreaChart, Area, BarChart, Bar,
+  ReferenceLine, Brush, ComposedChart,
 } from 'recharts'
 
 import { Button } from '@/components/ui/button'
@@ -606,22 +608,35 @@ function StatCard({ icon: Icon, label, value, sub, tone = 'blue' }) {
   )
 }
 
-function ChartTooltip({ active, payload, label, currency = 'INR' }) {
+function ChartTooltip({ active, payload, label, currency = 'INR', totalSum }) {
   if (!active || !payload || !payload.length) return null
   const fmt = fmtFor(currency)
   return (
-    <div className="rounded-lg border border-border bg-popover/95 p-3 text-xs shadow-xl backdrop-blur">
-      <p className="font-semibold text-foreground mb-1.5">{label}</p>
-      <div className="space-y-1">
-        {payload.map((p, i) => (
-          <div key={i} className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color || p.fill }} />
-              <span className="text-muted-foreground">{p.name}:</span>
+    <div className="rounded-lg border border-border bg-popover/95 p-3 text-xs shadow-xl backdrop-blur min-w-[160px]">
+      {label && <p className="font-semibold text-foreground mb-1.5 border-b border-border/50 pb-1">{label}</p>}
+      <div className="space-y-1.5">
+        {payload.map((p, i) => {
+          const val = typeof p.value === 'number' ? p.value : Number(p.value || 0)
+          const pct = p.payload?.percent != null 
+            ? (p.payload.percent * 100).toFixed(1)
+            : (totalSum > 0 ? ((val / totalSum) * 100).toFixed(1) : null)
+          return (
+            <div key={i} className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color || p.fill }} />
+                <span className="text-muted-foreground truncate">{p.name || p.dataKey}:</span>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="font-mono font-semibold text-foreground">{fmt(val)}</span>
+                {pct != null && (
+                  <span className="ml-1.5 text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                    {pct}%
+                  </span>
+                )}
+              </div>
             </div>
-            <span className="font-mono font-medium text-foreground">{fmt(p.value)}</span>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -635,6 +650,424 @@ function EmptyChart() {
         <p>No cost data available for this view.</p>
       </div>
     </div>
+  )
+}
+
+// ============================ COLOR THEME PRESETS ============================
+const CHART_THEMES = {
+  default: { primary: '#8b5cf6', secondary: '#3b82f6', tertiary: '#ec4899', gradient1: '#8b5cf6', gradient2: '#06b6d4', name: 'Violet' },
+  ocean: { primary: '#06b6d4', secondary: '#0ea5e9', tertiary: '#3b82f6', gradient1: '#06b6d4', gradient2: '#0ea5e9', name: 'Ocean' },
+  sunset: { primary: '#f97316', secondary: '#ef4444', tertiary: '#f59e0b', gradient1: '#f97316', gradient2: '#ef4444', name: 'Sunset' },
+  forest: { primary: '#10b981', secondary: '#22c55e', tertiary: '#059669', gradient1: '#10b981', gradient2: '#22c55e', name: 'Forest' },
+  neon: { primary: '#a855f7', secondary: '#ec4899', tertiary: '#06b6d4', gradient1: '#a855f7', gradient2: '#ec4899', name: 'Neon' },
+}
+
+// ============================ ENHANCED CHART WRAPPER ============================
+function EnhancedChart({
+  title, description, data, dataKey = 'total', nameKey = 'month',
+  defaultType = 'area', currency = 'INR', allowTypes = ['area', 'line', 'bar'],
+  extraLines = [], pieData, pieInnerRadius = 55, pieOuterRadius = 80,
+  height = 'h-72 sm:h-80', showBrush = false, showTrend = false,
+  showAnnotations = false, children, headerAction, className = '',
+}) {
+  const [chartType, setChartType] = useState(defaultType)
+  const [theme, setTheme] = useState('default')
+  const [showTrendLine, setShowTrendLine] = useState(showTrend)
+  const [showRefLines, setShowRefLines] = useState(showAnnotations)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showControls, setShowControls] = useState(false)
+  const chartRef = useRef(null)
+  const fmt = fmtFor(currency)
+  const sym = symFor(currency)
+  const colors = CHART_THEMES[theme]
+
+  // Compute moving average trend line
+  const trendData = data && showTrendLine ? data.map((item, i, arr) => {
+    const window = 3
+    const start = Math.max(0, i - window + 1)
+    const slice = arr.slice(start, i + 1)
+    const avg = slice.reduce((s, d) => s + (d[dataKey] || 0), 0) / slice.length
+    return { ...item, _trend: Math.round(avg) }
+  }) : data
+
+  // Compute reference values
+  const values = data ? data.map(d => d[dataKey] || 0).filter(v => v > 0) : []
+  const avgVal = values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0
+  const maxVal = values.length ? Math.max(...values) : 0
+  const minVal = values.length ? Math.min(...values) : 0
+
+  // Download chart as PNG
+  const downloadPNG = useCallback(() => {
+    const el = chartRef.current
+    if (!el) return
+    import('html2canvas').then(({ default: html2canvas }) => {
+      html2canvas(el, { backgroundColor: '#0a0a0a', scale: 2 }).then(canvas => {
+        const link = document.createElement('a')
+        link.download = `${title?.replace(/\s+/g, '_').toLowerCase() || 'chart'}.png`
+        link.href = canvas.toDataURL('image/png')
+        link.click()
+      })
+    })
+  }, [title])
+
+  const typeIcons = { area: Activity, line: LineChartIcon, bar: BarChart2 }
+
+  const renderTimeSeriesChart = (chartData) => {
+    const ChartContainer = chartType === 'bar' ? BarChart : chartType === 'line' ? LineChart : AreaChart
+    return (
+      <ResponsiveContainer width="100%" height="100%">
+        <ChartContainer data={chartData}>
+          <defs>
+            <linearGradient id={`grad-${theme}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={colors.gradient1} stopOpacity={0.4} />
+              <stop offset="95%" stopColor={colors.gradient1} stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id={`grad2-${theme}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={colors.secondary} stopOpacity={0.3} />
+              <stop offset="95%" stopColor={colors.secondary} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
+          <XAxis
+            dataKey={nameKey}
+            tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+            stroke="hsl(var(--muted-foreground))"
+            axisLine={{ stroke: 'hsl(var(--border))' }}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+            stroke="hsl(var(--muted-foreground))"
+            tickFormatter={(v) => `${sym}${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip content={<ChartTooltip currency={currency} />} />
+          <Legend
+            wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+            iconType="circle"
+            iconSize={8}
+          />
+          {/* Reference Lines */}
+          {showRefLines && avgVal > 0 && (
+            <ReferenceLine
+              y={avgVal}
+              stroke="#f59e0b"
+              strokeDasharray="8 4"
+              strokeWidth={1.5}
+              label={{ value: `Avg: ${fmt(avgVal)}`, position: 'insideTopRight', fill: '#f59e0b', fontSize: 10, fontWeight: 600 }}
+            />
+          )}
+          {showRefLines && maxVal > 0 && (
+            <ReferenceLine
+              y={maxVal}
+              stroke="#ef4444"
+              strokeDasharray="4 4"
+              strokeWidth={1}
+              label={{ value: `Max`, position: 'insideTopRight', fill: '#ef4444', fontSize: 9 }}
+            />
+          )}
+          {showRefLines && minVal > 0 && minVal !== maxVal && (
+            <ReferenceLine
+              y={minVal}
+              stroke="#10b981"
+              strokeDasharray="4 4"
+              strokeWidth={1}
+              label={{ value: `Min`, position: 'insideBottomRight', fill: '#10b981', fontSize: 9 }}
+            />
+          )}
+          {/* Primary data */}
+          {chartType === 'area' && (
+            <Area
+              type="monotone"
+              dataKey={dataKey}
+              name="Total Spend"
+              stroke={colors.primary}
+              strokeWidth={2.5}
+              fillOpacity={1}
+              fill={`url(#grad-${theme})`}
+              animationDuration={800}
+              dot={false}
+              activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }}
+            />
+          )}
+          {chartType === 'line' && (
+            <Line
+              type="monotone"
+              dataKey={dataKey}
+              name="Total Spend"
+              stroke={colors.primary}
+              strokeWidth={2.5}
+              dot={{ r: 3, strokeWidth: 2, fill: colors.primary }}
+              activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff' }}
+              animationDuration={800}
+            />
+          )}
+          {chartType === 'bar' && (
+            <Bar
+              dataKey={dataKey}
+              name="Total Spend"
+              fill={colors.primary}
+              radius={[4, 4, 0, 0]}
+              animationDuration={800}
+            />
+          )}
+          {/* Extra data lines */}
+          {extraLines.map((line, i) => (
+            chartType === 'area' ? (
+              <Area
+                key={line.dataKey}
+                type="monotone"
+                dataKey={line.dataKey}
+                name={line.name}
+                stroke={line.color || colors.secondary}
+                strokeWidth={line.strokeWidth || 2}
+                strokeDasharray={line.dashed ? '5 5' : undefined}
+                fillOpacity={0.15}
+                fill={`url(#grad2-${theme})`}
+                dot={false}
+                animationDuration={800}
+              />
+            ) : chartType === 'line' ? (
+              <Line
+                key={line.dataKey}
+                type="monotone"
+                dataKey={line.dataKey}
+                name={line.name}
+                stroke={line.color || colors.secondary}
+                strokeWidth={line.strokeWidth || 2}
+                strokeDasharray={line.dashed ? '5 5' : undefined}
+                dot={{ r: 3 }}
+                animationDuration={800}
+              />
+            ) : (
+              <Bar
+                key={line.dataKey}
+                dataKey={line.dataKey}
+                name={line.name}
+                fill={line.color || colors.secondary}
+                radius={[4, 4, 0, 0]}
+                animationDuration={800}
+              />
+            )
+          ))}
+          {/* Trend line */}
+          {showTrendLine && (
+            <Line
+              type="monotone"
+              dataKey="_trend"
+              name="3-Mo Moving Avg"
+              stroke="#f59e0b"
+              strokeWidth={2}
+              strokeDasharray="6 3"
+              dot={false}
+              animationDuration={1000}
+            />
+          )}
+          {/* Brush for zoom */}
+          {showBrush && chartData && chartData.length > 4 && (
+            <Brush
+              dataKey={nameKey}
+              height={24}
+              stroke={colors.primary}
+              fill="hsl(var(--card))"
+              tickFormatter={() => ''}
+              startIndex={0}
+              endIndex={chartData.length - 1}
+            />
+          )}
+        </ChartContainer>
+      </ResponsiveContainer>
+    )
+  }
+
+  const controlBar = (
+    <div className={`flex flex-wrap items-center gap-1.5 ${showControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity duration-300`}>
+      {/* Chart type switcher */}
+      {!pieData && allowTypes.length > 1 && (
+        <div className="flex items-center rounded-md border border-border/60 bg-muted/30 p-0.5">
+          {allowTypes.map(type => {
+            const TypeIcon = typeIcons[type] || Activity
+            return (
+              <button
+                key={type}
+                onClick={() => setChartType(type)}
+                className={`p-1.5 rounded-sm transition-all duration-200 ${chartType === type ? 'bg-primary/20 text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                title={`${type.charAt(0).toUpperCase() + type.slice(1)} chart`}
+              >
+                <TypeIcon className="h-3.5 w-3.5" />
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {/* Trend line toggle */}
+      {!pieData && data && data.length > 2 && (
+        <button
+          onClick={() => setShowTrendLine(p => !p)}
+          className={`p-1.5 rounded-md border transition-all duration-200 ${showTrendLine ? 'border-amber-500/50 bg-amber-500/10 text-amber-400' : 'border-border/60 text-muted-foreground hover:text-foreground'}`}
+          title="Toggle trend line"
+        >
+          <TrendingUp className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {/* Annotations toggle */}
+      {!pieData && values.length > 0 && (
+        <button
+          onClick={() => setShowRefLines(p => !p)}
+          className={`p-1.5 rounded-md border transition-all duration-200 ${showRefLines ? 'border-blue-500/50 bg-blue-500/10 text-blue-400' : 'border-border/60 text-muted-foreground hover:text-foreground'}`}
+          title="Toggle avg/min/max reference lines"
+        >
+          <Hash className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {/* Color theme picker */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="p-1.5 rounded-md border border-border/60 text-muted-foreground hover:text-foreground transition-all duration-200" title="Color theme">
+            <Palette className="h-3.5 w-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[140px]">
+          <DropdownMenuLabel className="text-xs">Color Theme</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {Object.entries(CHART_THEMES).map(([key, t]) => (
+            <DropdownMenuItem key={key} onClick={() => setTheme(key)} className="gap-2 text-xs">
+              <span className="h-3 w-3 rounded-full border" style={{ backgroundColor: t.primary }} />
+              {t.name}
+              {theme === key && <Check className="h-3 w-3 ml-auto text-primary" />}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {/* Download PNG */}
+      <button
+        onClick={downloadPNG}
+        className="p-1.5 rounded-md border border-border/60 text-muted-foreground hover:text-foreground transition-all duration-200"
+        title="Download as PNG"
+      >
+        <Image className="h-3.5 w-3.5" />
+      </button>
+      {/* Fullscreen toggle */}
+      <button
+        onClick={() => setIsFullscreen(p => !p)}
+        className="p-1.5 rounded-md border border-border/60 text-muted-foreground hover:text-foreground transition-all duration-200"
+        title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+      >
+        {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  )
+
+  // Summary stats bar
+  const statsBar = !pieData && values.length > 0 ? (
+    <div className="flex items-center gap-4 text-[10px] text-muted-foreground mt-2 px-1">
+      <span>Avg: <span className="font-medium text-foreground">{fmt(avgVal)}</span></span>
+      <span>Min: <span className="font-medium text-emerald-400">{fmt(minVal)}</span></span>
+      <span>Max: <span className="font-medium text-red-400">{fmt(maxVal)}</span></span>
+      {values.length >= 2 && (() => {
+        const change = values[values.length - 1] - values[values.length - 2]
+        const pct = values[values.length - 2] ? ((change / values[values.length - 2]) * 100).toFixed(1) : 0
+        return (
+          <span className={`flex items-center gap-0.5 ${change >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+            {change >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+            {change >= 0 ? '+' : ''}{pct}% MoM
+          </span>
+        )
+      })()}
+    </div>
+  ) : null
+
+  const fullscreenClasses = isFullscreen ? 'fixed inset-4 z-50 bg-card border border-border rounded-xl shadow-2xl' : ''
+
+  return (
+    <>
+      {isFullscreen && <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setIsFullscreen(false)} />}
+      <Card ref={chartRef} className={`group transition-all duration-300 ${fullscreenClasses} ${className}`}>
+        <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-base sm:text-lg">{title}</CardTitle>
+            <CardDescription className="text-xs">{description}</CardDescription>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {headerAction}
+            {controlBar}
+          </div>
+        </CardHeader>
+        <CardContent className={isFullscreen ? 'h-[calc(100%-120px)]' : height}>
+          {pieData ? (
+            pieData.length === 0 ? <EmptyChart /> : (() => {
+              const totalPieValue = pieData.reduce((s, d) => s + (d.value || 0), 0)
+              const enrichedPieData = pieData.map((d, i) => ({
+                ...d,
+                color: d.color || [CHART_THEMES[theme].primary, CHART_THEMES[theme].secondary, CHART_THEMES[theme].tertiary, '#06b6d4', '#f59e0b', '#10b981', '#ec4899'][i % 7],
+                percent: totalPieValue > 0 ? d.value / totalPieValue : 0
+              }))
+              return (
+                <div className="h-full flex flex-col justify-between">
+                  <div className="flex-1 min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={enrichedPieData}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={pieInnerRadius}
+                          outerRadius={pieOuterRadius}
+                          paddingAngle={2}
+                          animationDuration={800}
+                          label={({ percent }) => (percent >= 0.04 ? `${(percent * 100).toFixed(1)}%` : '')}
+                          labelLine={false}
+                        >
+                          {enrichedPieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<ChartTooltip currency={currency} totalSum={totalPieValue} />} />
+                        <Legend
+                          wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
+                          layout="horizontal"
+                          align="center"
+                          verticalAlign="bottom"
+                          iconType="circle"
+                          iconSize={8}
+                          formatter={(value, entry) => {
+                            const val = entry.payload?.value || 0
+                            const pct = totalPieValue > 0 ? ((val / totalPieValue) * 100).toFixed(1) : 0
+                            return <span className="text-muted-foreground">{value} <strong className="text-foreground font-mono">{pct}%</strong></span>
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Descriptive Percentage Distribution Summary Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-2 border-t border-border/40 text-[11px]">
+                    {enrichedPieData.slice(0, 6).map((item, idx) => {
+                      const pct = (item.percent * 100).toFixed(1)
+                      return (
+                        <div key={idx} className="flex items-center justify-between p-1.5 rounded-md bg-muted/20 border border-border/30">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                            <span className="truncate text-muted-foreground">{item.name}</span>
+                          </div>
+                          <span className="font-mono font-semibold text-foreground shrink-0">{pct}%</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()
+          ) : (
+            data ? (showTrendLine ? renderTimeSeriesChart(trendData) : renderTimeSeriesChart(data)) : <EmptyChart />
+          )}
+        </CardContent>
+        {statsBar}
+      </Card>
+    </>
   )
 }
 
@@ -694,126 +1127,71 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
 
       {/* Primary 7 Charts Grid */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Chart 1: Monthly Cost Trend (12 Months Area Chart) */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-base sm:text-lg">1. Monthly Spending Trend</CardTitle>
-              <CardDescription className="text-xs">Historical and current month cloud spending trajectory</CardDescription>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => generatePDFReport(data)} className="hidden sm:flex">Export PDF</Button>
-          </CardHeader>
-          <CardContent className="h-72 sm:h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trend}>
-                <defs>
-                  <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `${sym}${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<ChartTooltip currency={currency} />} />
-                <Area type="monotone" dataKey="total" name="Total Spend" stroke="#8b5cf6" strokeWidth={2} fillOpacity={1} fill="url(#colorTotal)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {/* Chart 1: Monthly Cost Trend */}
+        <EnhancedChart
+          title="1. Monthly Spending Trend"
+          description="Historical & current month spending with trendlines, min/max bounds & moving avg"
+          data={trend}
+          dataKey="total"
+          nameKey="month"
+          currency={currency}
+          defaultType="area"
+          showTrend={true}
+          showAnnotations={true}
+          showBrush={true}
+          className="lg:col-span-2"
+          headerAction={<Button variant="outline" size="sm" onClick={() => generatePDFReport(data)} className="hidden sm:flex">Export PDF</Button>}
+        />
 
-        {/* Chart 2: Service Distribution (Pie Chart) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base sm:text-lg">2. Service Distribution</CardTitle>
-            <CardDescription className="text-xs">Cost share by active cloud service</CardDescription>
-          </CardHeader>
-          <CardContent className="h-72 sm:h-80">
-            {serviceBreakdown.length === 0 ? <EmptyChart /> : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={serviceBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={2}>
-                    {serviceBreakdown.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                  </Pie>
-                  <Tooltip content={<ChartTooltip currency={currency} />} />
-                  <Legend wrapperStyle={{ fontSize: 10 }} layout="horizontal" align="center" verticalAlign="bottom" />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
+        {/* Chart 2: Service Distribution */}
+        <EnhancedChart
+          title="2. Service Distribution"
+          description="Cost share by active cloud service"
+          pieData={serviceBreakdown}
+          currency={currency}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Chart 3: Budget vs Spend (Bar Chart) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base sm:text-lg">3. Budget vs Actual Spend</CardTitle>
-            <CardDescription className="text-xs">Allocated budget vs total current consumption</CardDescription>
-          </CardHeader>
-          <CardContent className="h-64 sm:h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={[{ name: 'Budget Health', Budget: budget.monthly_budget, Actual: budget.used }]}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
-                <YAxis stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `${sym}${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<ChartTooltip currency={currency} />} />
-                <Legend />
-                <Bar dataKey="Budget" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Actual" fill={budget.used > budget.monthly_budget ? '#ef4444' : '#10b981'} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {/* Chart 3: Budget vs Spend */}
+        <EnhancedChart
+          title="3. Budget vs Actual Spend"
+          description="Allocated budget vs total current consumption"
+          data={[{ name: 'Budget Health', Budget: budget.monthly_budget, Actual: budget.used }]}
+          dataKey="Actual"
+          nameKey="name"
+          currency={currency}
+          defaultType="bar"
+          extraLines={[{ dataKey: 'Budget', name: 'Budget Limit', color: '#3b82f6' }]}
+          showAnnotations={true}
+        />
 
-        {/* Chart 4: Cost Forecast (Area Chart) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base sm:text-lg">4. Cost Forecast (Next 3 Months)</CardTitle>
-            <CardDescription className="text-xs">Projected spending based on 3-month rolling average</CardDescription>
-          </CardHeader>
-          <CardContent className="h-64 sm:h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={forecast.series}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `${sym}${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<ChartTooltip currency={currency} />} />
-                <Legend />
-                <Line type="monotone" dataKey="actual" name="Actual Spend" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
-                <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#ec4899" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {/* Chart 4: Cost Forecast */}
+        <EnhancedChart
+          title="4. Cost Forecast (Next 3 Months)"
+          description="Projected spending based on 3-month rolling average"
+          data={forecast.series}
+          dataKey="actual"
+          nameKey="month"
+          currency={currency}
+          defaultType="line"
+          extraLines={[{ dataKey: 'forecast', name: 'Forecast', color: '#ec4899', dashed: true }]}
+          showTrend={true}
+          showAnnotations={true}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Chart 5: Resource Status Distribution (Donut Chart) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base sm:text-lg">5. Resource Status Breakdown</CardTitle>
-            <CardDescription className="text-xs">Active vs Idle &amp; Inactive cloud inventory ratio</CardDescription>
-          </CardHeader>
-          <CardContent className="h-64 sm:h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={[
-                    { name: 'Active Resources', value: stats.activeResources, fill: '#10b981' },
-                    { name: 'Idle / Inactive', value: Math.max(0, stats.totalResources - stats.activeResources), fill: '#f59e0b' },
-                  ]}
-                  dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3}
-                >
-                  <Cell fill="#10b981" />
-                  <Cell fill="#f59e0b" />
-                </Pie>
-                <Tooltip />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {/* Chart 5: Resource Status Breakdown */}
+        <EnhancedChart
+          title="5. Resource Status Breakdown"
+          description="Active vs Idle & Inactive cloud inventory ratio"
+          pieData={[
+            { name: 'Active Resources', value: stats.activeResources, color: '#10b981' },
+            { name: 'Idle / Inactive', value: Math.max(0, stats.totalResources - stats.activeResources), color: '#f59e0b' },
+          ]}
+          currency={currency}
+        />
 
         {/* Chart 6: FinOps Cost Efficiency Score & Health Gauge */}
         <Card className="relative overflow-hidden flex flex-col justify-between">
@@ -1152,86 +1530,62 @@ function AnalyticsPage({ data }) {
 
       <TabsContent value="service" className="space-y-6">
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardHeader><CardTitle className="text-base sm:text-lg">Service Cost Distribution</CardTitle><CardDescription className="text-xs">Current active spend per service</CardDescription></CardHeader>
-            <CardContent className="h-72 sm:h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={serviceBreakdown}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `${sym}${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip content={<ChartTooltip currency={currency} />} />
-                  <Bar dataKey="value" name="Cost" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle className="text-base sm:text-lg">Service Share %</CardTitle><CardDescription className="text-xs">Proportional spend by cloud service</CardDescription></CardHeader>
-            <CardContent className="h-72 sm:h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={serviceBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} paddingAngle={2}>
-                    {serviceBreakdown.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color || '#3b82f6'} />)}
-                  </Pie>
-                  <Tooltip content={<ChartTooltip currency={currency} />} />
-                  <Legend wrapperStyle={{ fontSize: 10 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          <EnhancedChart
+            title="Service Cost Distribution"
+            description="Current active spend per cloud service with customizable visualization"
+            data={serviceBreakdown}
+            dataKey="value"
+            nameKey="name"
+            currency={currency}
+            defaultType="bar"
+            showAnnotations={true}
+          />
+          <EnhancedChart
+            title="Service Share %"
+            description="Proportional spend share by cloud service"
+            pieData={serviceBreakdown}
+            currency={currency}
+          />
         </div>
       </TabsContent>
 
       <TabsContent value="region" className="space-y-6">
-        <Card>
-          <CardHeader><CardTitle className="text-base sm:text-lg">Region Cost Breakdown</CardTitle><CardDescription className="text-xs">Cloud spending grouped by geographic region</CardDescription></CardHeader>
-          <CardContent className="h-72 sm:h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={regionBreakdown}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
-                <YAxis stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `${sym}${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<ChartTooltip currency={currency} />} />
-                <Bar dataKey="value" name="Spend" fill="#06b6d4" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <EnhancedChart
+          title="Region Cost Breakdown"
+          description="Cloud spending grouped by geographic region with reference markers"
+          data={regionBreakdown}
+          dataKey="value"
+          nameKey="name"
+          currency={currency}
+          defaultType="bar"
+          showAnnotations={true}
+        />
       </TabsContent>
 
       <TabsContent value="owner" className="space-y-6">
-        <Card>
-          <CardHeader><CardTitle className="text-base sm:text-lg">Owner &amp; Team Spend</CardTitle><CardDescription className="text-xs">Cost distribution across platform teams</CardDescription></CardHeader>
-          <CardContent className="h-72 sm:h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={ownerBreakdown}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
-                <YAxis stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `${sym}${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<ChartTooltip currency={currency} />} />
-                <Bar dataKey="value" name="Spend" fill="#ec4899" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <EnhancedChart
+          title="Owner & Team Spend"
+          description="Cost distribution across platform teams with interactive trend analysis"
+          data={ownerBreakdown}
+          dataKey="value"
+          nameKey="name"
+          currency={currency}
+          defaultType="bar"
+          showAnnotations={true}
+        />
       </TabsContent>
 
       <TabsContent value="department" className="space-y-6">
-        <Card>
-          <CardHeader><CardTitle className="text-base sm:text-lg">Department Spend Breakdown</CardTitle><CardDescription className="text-xs">Engineering vs Data Science vs DevOps</CardDescription></CardHeader>
-          <CardContent className="h-72 sm:h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={departmentBreakdown}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
-                <YAxis stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `${sym}${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<ChartTooltip currency={currency} />} />
-                <Bar dataKey="value" name="Spend" fill="#10b981" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <EnhancedChart
+          title="Department Spend Breakdown"
+          description="Engineering vs Data Science vs DevOps cost allocation"
+          data={departmentBreakdown}
+          dataKey="value"
+          nameKey="name"
+          currency={currency}
+          defaultType="bar"
+          showAnnotations={true}
+        />
       </TabsContent>
     </Tabs>
   )

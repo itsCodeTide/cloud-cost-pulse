@@ -8,6 +8,7 @@ import { sendResendEmail, ResendRequestError, escapeHtml } from '@/lib/resend'
 import { askFinOpsCopilot } from '@/lib/ai-copilot'
 import { calculateTagGovernance, detectCostAnomalies } from '@/lib/tag-governance'
 import { discoverAzureResources, validateAzureServicePrincipal, fetchAzureAdvisorRecommendations, fetchAzureMonitorMetrics } from '@/lib/azure-client'
+import { broadcastDashboardUpdateWS } from '../ws/route.js'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -1004,6 +1005,81 @@ export async function GET(request, ctx) {
       return ok(metrics)
     }
 
+    // ---------- Alerts Endpoints ----------
+    if (path === 'alerts') {
+      const alerts = await db.collection('alerts').find({ tenantId }).toArray()
+      return ok(alerts.map(({ _id, ...a }) => a))
+    }
+
+    if (path === 'alerts/create') {
+      const { name, threshold, period, recipients } = body
+      if (!name || !threshold || !period) {
+        return ok({ error: 'Missing required fields' }, 400)
+      }
+      const newAlert = {
+        tenantId,
+        name,
+        threshold,
+        period,
+        recipients: recipients || [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        active: true,
+      }
+      await db.collection('alerts').insertOne(newAlert)
+      await audit(db, tenantId, userId, { action: 'create_alert', entity: 'alert', new_value: name })
+      broadcastDashboardUpdateWS({ event: 'alert_created', alertId: newAlert._id })
+      return ok({ ok: true, alert: newAlert })
+    }
+
+    if (path.endsWith('/activate')) {
+      const alertId = path.split('/')[1]
+      await db.collection('alerts').updateOne({ tenantId, _id: alertId }, { $set: { active: true, updatedAt: new Date() } })
+      await audit(db, tenantId, userId, { action: 'activate_alert', entity: 'alert', entity_id: alertId })
+      broadcastDashboardUpdateWS({ event: 'alert_activated', alertId })
+      return ok({ ok: true })
+    }
+
+    if (path.endsWith('/deactivate')) {
+      const alertId = path.split('/')[1]
+      await db.collection('alerts').updateOne({ tenantId, _id: alertId }, { $set: { active: false, updatedAt: new Date() } })
+      await audit(db, tenantId, userId, { action: 'deactivate_alert', entity: 'alert', entity_id: alertId })
+      broadcastDashboardUpdateWS({ event: 'alert_deactivated', alertId })
+      return ok({ ok: true })
+    }
+
+    // ---------- RBAC Endpoints ----------
+    if (path === 'roles') {
+      const roles = await db.collection('roles').find({ tenantId }).toArray()
+      return ok(roles.map(({ _id, ...r }) => r))
+    }
+
+    if (path === 'roles/assign') {
+      const { targetUserId, role } = body
+      if (!targetUserId || !role) {
+        return ok({ error: 'Missing userId or role' }, 400)
+      }
+      await db.collection('roles').updateOne(
+        { tenantId, userId: targetUserId },
+        { $set: { role, updatedAt: new Date() } },
+        { upsert: true }
+      )
+      await audit(db, tenantId, userId, { action: 'assign_role', entity: 'role', entity_id: targetUserId, new_value: role })
+      broadcastDashboardUpdateWS({ event: 'role_assigned', userId: targetUserId, role })
+      return ok({ ok: true })
+    }
+
+    // ---------- Tag Editing Endpoint ----------
+    if (path.startsWith('resources/') && path.endsWith('/tags')) {
+      const resourceId = path.split('/')[1]
+      const { tags } = body
+      if (!tags) return ok({ error: 'No tags provided' }, 400)
+      await db.collection('resources').updateOne({ tenantId, id: resourceId }, { $set: { tags, updatedAt: new Date() } })
+      await audit(db, tenantId, userId, { action: 'edit_tags', entity: 'resource', entity_id: resourceId, new_value: JSON.stringify(tags) })
+      broadcastDashboardUpdateWS({ event: 'tags_updated', resourceId })
+      return ok({ ok: true })
+    }
+
     return ok({ error: 'Not found' }, 404)
   } catch (e) {
     console.error(e)
@@ -1043,6 +1119,7 @@ export async function POST(request, ctx) {
         await db.collection('resources').deleteMany({ tenantId, id: { $in: ids } })
         await audit(db, tenantId, userId, { action: 'bulk_delete', entity: 'resources', new_value: `Deleted ${ids.length} resources` })
         await notify(db, tenantId, { type: 'resource', severity: 'warning', title: 'Bulk resources deleted', message: `${ids.length} resources were deleted.` })
+        broadcastDashboardUpdateWS({ event: 'bulk_delete', count: ids.length })
         return ok({ ok: true, count: ids.length })
       }
 
@@ -1052,6 +1129,7 @@ export async function POST(request, ctx) {
         await db.collection('resources').updateMany({ tenantId, id: { $in: ids } }, { $set: { status, updated_at: new Date() } })
         await audit(db, tenantId, userId, { action: 'bulk_status', entity: 'resources', new_value: `Updated ${ids.length} resources to ${status}` })
         await notify(db, tenantId, { type: 'resource', severity: 'info', title: 'Bulk status updated', message: `${ids.length} resources updated to ${status}.` })
+        broadcastDashboardUpdateWS({ event: 'bulk_status', status, count: ids.length })
         return ok({ ok: true, count: ids.length })
       }
 
@@ -1065,16 +1143,13 @@ export async function POST(request, ctx) {
       const recAction = parts[2] // 'apply' or 'dismiss'
 
       if (recAction === 'apply') {
-        // Record applied recommendation in DB to filter it out
         await db.collection('applied_recommendations').updateOne(
           { tenantId, recId },
           { $set: { tenantId, recId, applied_at: new Date(), applied_by: userId } },
           { upsert: true }
         )
-
         // Handle specific optimization actions on resources in DB
         if (recId === 'rec-vm-ri') {
-          // Reduce active VM costs by 20% in database
           const vms = await db.collection('resources').find({ tenantId, status: 'Active', service_type: 'Azure Virtual Machine' }).toArray()
           for (const vm of vms) {
             const newCost = Math.max(100, Math.round(vm.monthly_cost * 0.8))
@@ -1083,7 +1158,6 @@ export async function POST(request, ctx) {
           await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: 'Applied 20% Reserved Instance discount to active Virtual Machines' })
           await notify(db, tenantId, { type: 'recommendation', severity: 'success', title: 'VM Reserved Instances Applied', message: 'Applied 20% savings to active Virtual Machine resources.' })
         } else if (recId === 'rec-storage-archive') {
-          // Reduce active Storage costs by 15% in database
           const storages = await db.collection('resources').find({ tenantId, status: 'Active', service_type: 'Azure Storage' }).toArray()
           for (const st of storages) {
             const newCost = Math.max(100, Math.round(st.monthly_cost * 0.85))
@@ -1092,7 +1166,6 @@ export async function POST(request, ctx) {
           await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: 'Applied 15% Storage Archive tier optimization' })
           await notify(db, tenantId, { type: 'recommendation', severity: 'success', title: 'Storage Archive Tier Applied', message: 'Applied 15% Archive tier savings to Storage resources.' })
         } else if (recId === 'rec-sql-rightsize') {
-          // Reduce active SQL costs by 12% in database
           const sqls = await db.collection('resources').find({ tenantId, status: 'Active', service_type: 'Azure SQL Database' }).toArray()
           for (const sq of sqls) {
             const newCost = Math.max(100, Math.round(sq.monthly_cost * 0.88))
@@ -1109,9 +1182,8 @@ export async function POST(request, ctx) {
             await notify(db, tenantId, { type: 'recommendation', severity: 'success', title: 'Resource Deallocated', message: `${target.resource_name} was deallocated to save costs.` })
           }
         }
-
-        // Clear API cache so dashboard and charts recalculate live
         cacheClear(tenantId)
+        broadcastDashboardUpdateWS({ event: 'recommendation_applied', recId })
         return ok({ ok: true, appliedId: recId })
       }
 
@@ -1123,6 +1195,7 @@ export async function POST(request, ctx) {
         )
         await audit(db, tenantId, userId, { action: 'dismiss_recommendation', entity: 'recommendation', entity_id: recId })
         cacheClear(tenantId)
+        broadcastDashboardUpdateWS({ event: 'recommendation_dismissed', recId })
         return ok({ ok: true, dismissedId: recId })
       }
     }
