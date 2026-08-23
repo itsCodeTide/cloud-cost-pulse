@@ -1172,13 +1172,13 @@ function EnhancedChart({
     </div>
   ) : null
 
-  const fullscreenClasses = isFullscreen ? 'fixed inset-4 z-50 bg-card border border-border rounded-xl shadow-2xl' : ''
+  const fullscreenClasses = isFullscreen ? 'fixed inset-2 sm:inset-4 z-50 bg-card border border-border rounded-xl shadow-2xl' : ''
 
   return (
     <>
       {isFullscreen && <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setIsFullscreen(false)} />}
       <Card ref={chartRef} className={`group transition-all duration-300 ${fullscreenClasses} ${className}`}>
-        <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pb-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <CardTitle className="text-base sm:text-lg">{title}</CardTitle>
@@ -1190,7 +1190,7 @@ function EnhancedChart({
             </div>
             <CardDescription className="text-xs">{description}</CardDescription>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:shrink-0">
             {headerAction}
             {controlBar}
           </div>
@@ -1419,7 +1419,7 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-        <div className="flex items-center gap-1 bg-background/80 p-1 rounded-lg border border-border/60">
+        <div className="flex items-center gap-1 bg-background/80 p-1 rounded-lg border border-border/60 max-w-full overflow-x-auto no-scrollbar">
           <span className="text-[11px] font-medium text-muted-foreground px-2 flex items-center gap-1">
             <CalendarDays className="h-3 w-3 text-cyan-400" /> Range:
           </span>
@@ -1861,7 +1861,7 @@ function AnalyticsPage({ data }) {
             <div className="text-[11px] text-muted-foreground">Analyze spending distribution by service, region, owner and department across time horizons</div>
           </div>
         </div>
-        <div className="flex items-center gap-1 bg-background/80 p-1 rounded-lg border border-border/60 self-start sm:self-auto">
+        <div className="flex items-center gap-1 bg-background/80 p-1 rounded-lg border border-border/60 self-start sm:self-auto max-w-full overflow-x-auto no-scrollbar">
           <span className="text-[11px] font-medium text-muted-foreground px-2 flex items-center gap-1">
             <CalendarDays className="h-3 w-3 text-cyan-400" /> Range:
           </span>
@@ -2637,7 +2637,7 @@ export default function App() {
         />
         <MobileNav active={active} setActive={setActive} />
 
-        <main ref={mainRef} className="flex-1 p-3 sm:p-6 md:p-8 overflow-y-auto">
+        <main ref={mainRef} className="flex-1 min-w-0 p-3 sm:p-6 md:p-8 overflow-y-auto overflow-x-hidden">
           {active === 'dashboard' && <DashboardPage data={data} onOpenDemoModal={() => setDemoModalOpen(true)} onOpenImportModal={() => setImportModalOpen(true)} onNavigate={handleNavigate} onApplyRec={handleApplyRecommendation} onClearWorkspace={handleClearWorkspace} />}
           {active === 'resources' && <ResourcesPage currency={currency} onDataChange={load} externalSearch={topSearch} />}
           {active === 'analytics' && <AnalyticsPage data={data} />}
