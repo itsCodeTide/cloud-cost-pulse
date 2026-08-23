@@ -19,3 +19,6 @@ CREATE INDEX IF NOT EXISTS app_data_updated_at_idx
 
 ALTER TABLE public.app_data ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "server only app data" ON public.app_data;
+
+-- Make the new table available to Supabase's REST schema cache immediately.
+NOTIFY pgrst, 'reload schema';
