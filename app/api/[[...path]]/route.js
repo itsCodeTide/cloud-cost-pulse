@@ -378,6 +378,18 @@ async function notify(db, tenantId, { type, title, message, severity = 'info', d
   }
 }
 
+async function removeNotification(db, tenantId, userId, notificationId, action = 'dismiss_notification') {
+  const existing = await db.collection('notifications').findOne({ tenantId, id: notificationId })
+  if (!existing) return false
+  await db.collection('notifications').deleteOne({ tenantId, id: notificationId })
+  await audit(db, tenantId, userId, {
+    action, entity: 'notification', entity_id: notificationId,
+    prev_value: `${existing.title || 'Notification'}: ${existing.message || ''}`,
+    new_value: action === 'accept_notification' ? 'Accepted and removed from active notifications' : 'Dismissed and removed from active notifications',
+  })
+  return true
+}
+
 // ---------------------------------------------------------------- seed
 async function seedIfEmptyForTenant(db, tenantId, { demo = false } = {}) {
   // Skip DB round-trip if we already know this tenant is initialized
@@ -1243,7 +1255,6 @@ export async function POST(request, ctx) {
             await db.collection('resources').updateOne({ tenantId, id: vm.id }, { $set: { monthly_cost: newCost, updated_at: new Date() } })
           }
           await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: 'Applied 20% Reserved Instance discount to active Virtual Machines' })
-          await notify(db, tenantId, { type: 'recommendation', severity: 'success', title: 'VM Reserved Instances Applied', message: 'Applied 20% savings to active Virtual Machine resources.' })
         } else if (recId === 'rec-storage-archive') {
           const storages = await db.collection('resources').find({ tenantId, status: 'Active', service_type: 'Azure Storage' }).toArray()
           for (const st of storages) {
@@ -1251,7 +1262,6 @@ export async function POST(request, ctx) {
             await db.collection('resources').updateOne({ tenantId, id: st.id }, { $set: { monthly_cost: newCost, updated_at: new Date() } })
           }
           await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: 'Applied 15% Storage Archive tier optimization' })
-          await notify(db, tenantId, { type: 'recommendation', severity: 'success', title: 'Storage Archive Tier Applied', message: 'Applied 15% Archive tier savings to Storage resources.' })
         } else if (recId === 'rec-sql-rightsize') {
           const sqls = await db.collection('resources').find({ tenantId, status: 'Active', service_type: 'Azure SQL Database' }).toArray()
           for (const sq of sqls) {
@@ -1259,14 +1269,12 @@ export async function POST(request, ctx) {
             await db.collection('resources').updateOne({ tenantId, id: sq.id }, { $set: { monthly_cost: newCost, updated_at: new Date() } })
           }
           await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: 'Applied 12% Azure SQL right-sizing optimization' })
-          await notify(db, tenantId, { type: 'recommendation', severity: 'success', title: 'SQL Right-Sizing Applied', message: 'Applied 12% savings to Azure SQL Database resources.' })
         } else if (recId.startsWith('rec-idle-')) {
           const resId = recId.replace('rec-idle-', '')
           const target = await db.collection('resources').findOne({ tenantId, id: resId })
           if (target) {
             await db.collection('resources').updateOne({ tenantId, id: resId }, { $set: { status: 'Inactive', monthly_cost: 0, updated_at: new Date() } })
             await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'resource', entity_id: resId, new_value: `Deallocated ${target.resource_name}` })
-            await notify(db, tenantId, { type: 'recommendation', severity: 'success', title: 'Resource Deallocated', message: `${target.resource_name} was deallocated to save costs.` })
           }
         }
         cacheClear(tenantId)
@@ -1416,18 +1424,21 @@ export async function POST(request, ctx) {
     // ---- Notifications POST endpoints ----
     if (parts[0] === 'notifications') {
       if (parts[1] === 'read-all' || path === 'notifications/read-all') {
-        await db.collection('notifications').updateMany({ tenantId, read: false }, { $set: { read: true } })
-        return ok({ ok: true })
+        const items = await db.collection('notifications').find({ tenantId, read: false }).toArray()
+        for (const item of items) await removeNotification(db, tenantId, userId, item.id, 'accept_notification')
+        return ok({ ok: true, removed: items.length })
       }
       if (parts[1] === 'clear-all' || path === 'notifications/clear-all') {
-        await db.collection('notifications').deleteMany({ tenantId })
-        return ok({ ok: true })
+        const items = await db.collection('notifications').find({ tenantId }).toArray()
+        for (const item of items) await removeNotification(db, tenantId, userId, item.id, 'dismiss_notification')
+        return ok({ ok: true, removed: items.length })
       }
       if (parts[1]) {
-        // Individual notification mark as read: /api/notifications/:id or /api/notifications/:id/read
+        // Accepting/opening a notification removes it from the active queue
+        // and records the action in the audit history.
         const notifId = parts[1]
-        await db.collection('notifications').updateOne({ tenantId, id: notifId }, { $set: { read: true } })
-        return ok({ ok: true })
+        const removed = await removeNotification(db, tenantId, userId, notifId, 'accept_notification')
+        return ok({ ok: true, removed })
       }
     }
 
@@ -1630,11 +1641,12 @@ export async function DELETE(request, ctx) {
 
     if (parts[0] === 'notifications') {
       if (parts[1]) {
-        await db.collection('notifications').deleteOne({ tenantId, id: parts[1] })
-        return ok({ ok: true })
+        const removed = await removeNotification(db, tenantId, userId, parts[1], 'dismiss_notification')
+        return ok({ ok: true, removed })
       }
-      await db.collection('notifications').deleteMany({ tenantId })
-      return ok({ ok: true })
+      const items = await db.collection('notifications').find({ tenantId }).toArray()
+      for (const item of items) await removeNotification(db, tenantId, userId, item.id, 'dismiss_notification')
+      return ok({ ok: true, removed: items.length })
     }
 
     return ok({ error: 'Not found' }, 404)
