@@ -53,6 +53,7 @@ const NAV = [
   { id: 'recommendations', label: 'Optimize', icon: Lightbulb },
   { id: 'reports', label: 'Reports', icon: FileText },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
+  { id: 'workspaces', label: 'Workspaces', icon: Layers },
   { id: 'history', label: 'History', icon: HistoryIcon },
   { id: 'profile', label: 'Profile', icon: User },
 ]
@@ -2312,6 +2313,49 @@ function SettingsPage({ refresh, currency, onCurrency }) {
   )
 }
 
+// ============================ WORKSPACES PAGE ============================
+function WorkspacesPage() {
+  const [workspaces, setWorkspaces] = useState([])
+  const [name, setName] = useState('')
+  const [editing, setEditing] = useState(null)
+  const [busy, setBusy] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
+
+  const loadWorkspaces = useCallback(async () => {
+    const res = await fetch('/api/workspaces')
+    const rows = await res.json()
+    if (res.ok) setWorkspaces(Array.isArray(rows) ? rows : [])
+  }, [])
+  useEffect(() => { loadWorkspaces() }, [loadWorkspaces])
+
+  const createWorkspace = async () => {
+    const clean = name.trim()
+    if (!clean) return toast.error('Enter a workspace name')
+    setBusy('create')
+    try {
+      const res = await fetch('/api/workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: clean }) })
+      const result = await res.json(); if (!res.ok) throw new Error(result.error || 'Create failed')
+      setName(''); setCreateOpen(false); await loadWorkspaces(); toast.success('Fresh workspace created')
+    } catch (e) { toast.error('Could not create workspace', { description: e.message }) } finally { setBusy('') }
+  }
+  const switchWorkspace = async (id) => {
+    setBusy(`switch:${id}`)
+    try { const res = await fetch('/api/workspaces/switch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); if (!res.ok) throw new Error('Switch failed'); window.location.reload() } catch (e) { toast.error(e.message) } finally { setBusy('') }
+  }
+  const saveWorkspace = async () => {
+    const clean = name.trim(); if (!clean) return toast.error('Enter a workspace name')
+    setBusy('save')
+    try { const res = await fetch('/api/workspaces/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: clean }) }); const result = await res.json(); if (!res.ok) throw new Error(result.error || 'Save failed'); setEditing(null); setName(''); await loadWorkspaces(); toast.success('Workspace saved') } catch (e) { toast.error('Could not save workspace', { description: e.message }) } finally { setBusy('') }
+  }
+  const deleteWorkspace = async (id) => {
+    if (!window.confirm('Delete this workspace and all of its cloud data? This cannot be undone.')) return
+    setBusy(`delete:${id}`)
+    try { const res = await fetch('/api/workspaces/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); const result = await res.json(); if (!res.ok) throw new Error(result.error || 'Delete failed'); toast.success('Workspace deleted'); window.location.reload() } catch (e) { toast.error('Could not delete workspace', { description: e.message }) } finally { setBusy('') }
+  }
+
+  return <div className="space-y-6 max-w-4xl"><div className="flex items-center justify-between gap-3"><div><h2 className="text-2xl font-semibold">Workspaces</h2><p className="text-sm text-muted-foreground mt-1">Create separate fresh environments for different teams, clients or projects.</p></div><Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" /> New workspace</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Create a fresh workspace</DialogTitle><DialogDescription>New workspaces start empty. Upload cloud data whenever you are ready.</DialogDescription></DialogHeader><div className="space-y-2"><Label htmlFor="new-workspace-name">Workspace name</Label><Input id="new-workspace-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Production Cloud" onKeyDown={(e) => e.key === 'Enter' && createWorkspace()} /></div><DialogFooter><Button onClick={createWorkspace} disabled={busy === 'create'}>{busy === 'create' ? 'Creating…' : 'Create workspace'}</Button></DialogFooter></DialogContent></Dialog></div><div className="grid gap-4 md:grid-cols-2">{workspaces.map((workspace) => <Card key={workspace.id} className={workspace.active ? 'border-primary/60' : ''}><CardContent className="p-5"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3 min-w-0"><div className="h-10 w-10 rounded-lg bg-primary/10 grid place-items-center shrink-0"><Layers className="h-5 w-5 text-primary" /></div><div className="min-w-0">{editing === workspace.id ? <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveWorkspace()} /> : <div className="font-semibold truncate">{workspace.name}</div>}<div className="text-xs text-muted-foreground mt-1">{workspace.active ? 'Current workspace' : 'Empty or saved workspace'}</div></div></div>{workspace.active && <Badge>Active</Badge>}</div><div className="flex flex-wrap gap-2 mt-5">{editing === workspace.id ? <><Button size="sm" onClick={saveWorkspace} disabled={busy === 'save'}><Check className="h-3.5 w-3.5 mr-1" /> Save</Button><Button size="sm" variant="ghost" onClick={() => { setEditing(null); setName('') }}>Cancel</Button></> : <><Button size="sm" variant={workspace.active ? 'secondary' : 'default'} onClick={() => !workspace.active && switchWorkspace(workspace.id)} disabled={workspace.active || busy.startsWith('switch:')}>{workspace.active ? 'Using workspace' : 'Switch'}</Button><Button size="sm" variant="outline" onClick={() => { setEditing(workspace.id); setName(workspace.name) }}><Pencil className="h-3.5 w-3.5 mr-1" /> Edit</Button><Button size="sm" variant="outline" className="text-red-400 border-red-500/30" onClick={() => deleteWorkspace(workspace.id)} disabled={busy.startsWith('delete:')}><Trash2 className="h-3.5 w-3.5 mr-1" /> Delete</Button></>}</div></CardContent></Card>)}</div></div>
+}
+
 // ============================ HISTORY PAGE ============================
 function HistoryPage({ data }) {
   const [items, setItems] = useState([])
@@ -2320,13 +2364,9 @@ function HistoryPage({ data }) {
   const loadHistory = useCallback(async () => {
     setLoading(true)
     try {
-      const [auditRes, activityRes] = await Promise.all([fetch('/api/audit'), fetch('/api/activity')])
+      const auditRes = await fetch('/api/audit')
       const audit = auditRes.ok ? await auditRes.json() : []
-      const activity = activityRes.ok ? await activityRes.json() : []
-      const merged = [
-        ...(Array.isArray(audit) ? audit : []).map((item) => ({ ...item, kind: 'Action', at: item.created_at })),
-        ...(Array.isArray(activity) ? activity : []).map((item) => ({ ...item, kind: 'Activity', at: item.occurred_at || item.created_at })),
-      ].sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+      const merged = (Array.isArray(audit) ? audit : []).map((item) => ({ ...item, kind: 'Action', at: item.created_at })).sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
       setItems(merged)
     } catch { toast.error('Failed to load history') } finally { setLoading(false) }
   }, [])
@@ -2335,7 +2375,7 @@ function HistoryPage({ data }) {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between gap-3"><div><h2 className="text-2xl font-semibold">History</h2><p className="text-sm text-muted-foreground mt-1">Every applied, accepted, dismissed, created, updated and deleted action in this workspace.</p></div><Button variant="outline" size="sm" onClick={loadHistory} disabled={loading}><RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh</Button></div>
+      <div className="flex items-center justify-between gap-3"><div><h2 className="text-2xl font-semibold">History</h2><p className="text-sm text-muted-foreground mt-1">Only actions you took are shown here: applied, created, updated, accepted, dismissed and deleted.</p></div><Button variant="outline" size="sm" onClick={loadHistory} disabled={loading}><RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh</Button></div>
       <Card>
         <CardContent className="p-0">
           {loading ? <div className="p-8 text-center text-sm text-muted-foreground">Loading history…</div> : items.length === 0 ? <div className="p-10 text-center text-sm text-muted-foreground">No actions yet. Applied changes will appear here.</div> : <ScrollArea className="h-[calc(100vh-230px)] min-h-96"><div className="divide-y divide-border/50">{items.map((item, index) => <div key={`${item.kind}-${item.id || index}`} className="flex items-start gap-3 px-4 py-3.5 text-sm"><Badge variant="outline" className="shrink-0 capitalize">{item.kind}</Badge><div className="min-w-0 flex-1"><div className="font-medium capitalize">{item.action || item.method || 'Activity'}{item.entity ? ` · ${item.entity}` : ''}{item.route ? ` · ${item.route}` : ''}</div>{(item.prev_value || item.new_value || item.status_code) && <div className="text-xs text-muted-foreground mt-1 break-words">{item.prev_value ? `from ${item.prev_value} ` : ''}{item.new_value ? `→ ${item.new_value} ` : ''}{item.status_code ? `(${item.status_code})` : ''}</div>}</div><time className="text-[11px] text-muted-foreground shrink-0">{item.at ? new Date(item.at).toLocaleString() : '—'}</time></div>)}</div></ScrollArea>}
@@ -2575,6 +2615,7 @@ export default function App() {
           {active === 'recommendations' && <RecommendationsPage data={data} refresh={load} />}
           {active === 'reports' && <ReportsPage data={data} mainRef={mainRef} refresh={load} />}
           {active === 'settings' && <SettingsPage refresh={load} currency={currency} onCurrency={handleCurrency} />}
+          {active === 'workspaces' && <WorkspacesPage />}
           {active === 'history' && <HistoryPage data={data} />}
           {active === 'profile' && <ProfilePage goSettings={() => setActive('settings')} data={data} />}
         </main>

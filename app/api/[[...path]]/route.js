@@ -318,6 +318,13 @@ async function requireAuth() {
   }
 }
 
+async function resolveWorkspace(db, request, authRes) {
+  const requestedId = request.headers.get('x-workspace-id') || request.cookies.get('ccp_workspace_id')?.value
+  if (!requestedId || requestedId === authRes.tenantId || authRes.userId === 'demo_user') return authRes
+  const workspace = await db.collection('tenants').findOne({ id: requestedId, owner_id: authRes.userId })
+  return workspace ? { ...authRes, tenantId: requestedId, isOrg: false } : authRes
+}
+
 // Keep a Supabase-editable copy of workspace and user identity alongside all
 // cloud-cost records. The sync is once per process/workspace, not per request.
 async function syncWorkspaceIdentity(db, { userId, tenantId, isOrg, profile = {} }) {
@@ -326,7 +333,7 @@ async function syncWorkspaceIdentity(db, { userId, tenantId, isOrg, profile = {}
   if (_identitySynced.has(key)) return
   await db.collection('tenants').updateOne(
     { id: tenantId },
-    { $set: { id: tenantId, name: isOrg ? 'Organization workspace' : 'Personal workspace', plan: 'Enterprise', updated_at: new Date() }, $setOnInsert: { created_at: new Date() } },
+    { $set: { id: tenantId, owner_id: isOrg ? null : userId, plan: 'Enterprise', updated_at: new Date() }, $setOnInsert: { name: isOrg ? 'Organization workspace' : 'Personal workspace', created_at: new Date() } },
     { upsert: true }
   )
   await db.collection('users').updateOne(
@@ -902,11 +909,16 @@ export async function GET(request, ctx) {
 
     const authRes = await requireAuth()
     if (authRes.error) return authRes.error
-    const { tenantId, userId, isOrg } = authRes
-
     const db = await getDb()
-    await syncWorkspaceIdentity(db, authRes)
-    await recordActivity(db, authRes, request, path)
+    const workspaceAuth = await resolveWorkspace(db, request, authRes)
+    const { tenantId, userId, isOrg } = workspaceAuth
+    await syncWorkspaceIdentity(db, workspaceAuth)
+    await recordActivity(db, workspaceAuth, request, path)
+    if (path === 'workspaces') {
+      const rows = await db.collection('tenants').find({ owner_id: userId }).sort({ created_at: 1 }).toArray()
+      const current = rows.some((row) => row.id === tenantId) ? rows : [{ id: tenantId, name: isOrg ? 'Organization workspace' : 'Personal workspace', plan: 'Enterprise', owner_id: userId, created_at: new Date(0) }, ...rows]
+      return ok(current.map(({ _id, owner_id, ...row }) => ({ ...row, ownerId: owner_id, active: row.id === tenantId })))
+    }
     if (path === 'analytics') {
       const cacheKey = `${tenantId}:analytics`
       const cached = cacheGet(cacheKey)
@@ -1195,13 +1207,60 @@ export async function POST(request, ctx) {
 
     const authRes = await requireAuth()
     if (authRes.error) return authRes.error
-    const { tenantId, userId } = authRes
-
     const db = await getDb()
-    await syncWorkspaceIdentity(db, authRes)
-    await recordActivity(db, authRes, request, path)
+    const workspaceAuth = await resolveWorkspace(db, request, authRes)
+    const { tenantId, userId } = workspaceAuth
+    await syncWorkspaceIdentity(db, workspaceAuth)
+    await recordActivity(db, workspaceAuth, request, path)
     await seedIfEmptyForTenant(db, tenantId)
     const body = await request.json().catch(() => ({}))
+
+    if (path === 'workspaces') {
+      const name = String(body.name || '').trim()
+      if (!name) return ok({ error: 'Workspace name is required' }, 400)
+      if (name.length > 80) return ok({ error: 'Workspace name must be 80 characters or less' }, 400)
+      const id = `ws_${uuidv4()}`
+      await db.collection('tenants').insertOne({ id, owner_id: userId, name, plan: 'Enterprise', created_at: new Date(), updated_at: new Date() })
+      await db.collection('settings').insertOne({ tenantId: id, dataSource: 'empty', currency: 'INR', created_at: new Date(), updated_at: new Date() })
+      await audit(db, tenantId, userId, { action: 'create_workspace', entity: 'workspace', entity_id: id, new_value: name })
+      return ok({ ok: true, workspace: { id, name, plan: 'Enterprise', active: false } }, 201)
+    }
+
+    if (path === 'workspaces/switch') {
+      const workspaceId = String(body.id || '')
+      const workspace = await db.collection('tenants').findOne({ id: workspaceId, owner_id: userId })
+      if (!workspace) return ok({ error: 'Workspace not found' }, 404)
+      await audit(db, tenantId, userId, { action: 'switch_workspace', entity: 'workspace', entity_id: workspaceId, new_value: workspace.name })
+      const response = ok({ ok: true, workspace: { id: workspace.id, name: workspace.name } })
+      response.cookies.set('ccp_workspace_id', workspace.id, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 60 * 60 * 24 * 365, path: '/' })
+      return response
+    }
+
+    if (path === 'workspaces/update') {
+      const name = String(body.name || '').trim()
+      if (!name) return ok({ error: 'Workspace name is required' }, 400)
+      const previous = await db.collection('tenants').findOne({ id: tenantId, owner_id: userId })
+      if (!previous) return ok({ error: 'Only workspace owners can edit this workspace' }, 403)
+      await db.collection('tenants').updateOne({ id: tenantId }, { $set: { name, updated_at: new Date() } })
+      await audit(db, tenantId, userId, { action: 'update_workspace', entity: 'workspace', entity_id: tenantId, prev_value: previous.name, new_value: name })
+      return ok({ ok: true, name })
+    }
+
+    if (path === 'workspaces/delete') {
+      const targetId = String(body.id || tenantId)
+      const workspace = await db.collection('tenants').findOne({ id: targetId, owner_id: userId })
+      if (!workspace) return ok({ error: 'Only workspace owners can delete this workspace' }, 403)
+      const remainingRows = await db.collection('tenants').find({ owner_id: userId, id: { $ne: targetId } }).sort({ created_at: 1 }).toArray()
+      const remaining = remainingRows.length
+      if (!remaining) return ok({ error: 'Create another workspace before deleting your only workspace' }, 400)
+      await audit(db, tenantId, userId, { action: 'delete_workspace', entity: 'workspace', entity_id: targetId, prev_value: workspace.name, new_value: 'Workspace deleted' })
+      for (const collection of ['resources', 'cost_history', 'cost_data', 'budgets', 'notifications', 'reports', 'applied_recommendations', 'azure_connections', 'settings', 'audit_logs', 'user_activity', 'meta']) await db.collection(collection).deleteMany({ tenantId: targetId })
+      await db.collection('tenants').deleteMany({ id: targetId, owner_id: userId })
+      cacheClear(targetId)
+      const response = ok({ ok: true, deleted: targetId })
+      if (targetId === tenantId) response.cookies.set('ccp_workspace_id', remainingRows[0].id, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 60 * 60 * 24 * 365, path: '/' })
+      return response
+    }
 
     if (path === 'copilot/ask') {
       const dash = await buildDashboard(db, tenantId)
