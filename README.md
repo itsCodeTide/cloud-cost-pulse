@@ -52,6 +52,14 @@ Cloud-Cost-Pulse is a production-grade cloud cost monitoring and FinOps platform
    ```bash
    cp .env.example .env.local
    ```
+   Add `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and
+   `SUPABASE_JWKS_URL`. Keep the secret key server-only; never prefix it with
+   `NEXT_PUBLIC_`.
+
+   Run `migrations/002_supabase_app_data.sql` in the Supabase SQL Editor
+   before starting the app. With these variables configured, the API uses
+   Supabase for persistent storage; MongoDB/in-memory storage is only a
+   fallback when Supabase is absent.
 
 3. **Run Development Server**:
    ```bash

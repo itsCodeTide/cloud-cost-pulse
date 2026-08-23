@@ -27,7 +27,7 @@ This guide provides step-by-step instructions to deploy Cloud-Cost-Pulse on Verc
 ## 3. Database Migration (Supabase / PostgreSQL)
 
 1. Open your PostgreSQL database management tool or Supabase SQL Editor.
-2. Run the SQL schema script provided in `schema.sql` or `migrations/001_init.sql`.
+2. Run the SQL schema script provided in `schema.sql` or `migrations/001_init.sql`, then run `migrations/002_supabase_app_data.sql` in the Supabase SQL Editor.
 3. (Optional) Run `scripts/seed.sql` to populate default seed tables.
 
 ---
@@ -44,6 +44,10 @@ This guide provides step-by-step instructions to deploy Cloud-Cost-Pulse on Verc
    | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key |
    | `CLERK_SECRET_KEY` | Clerk secret key |
    | `DATABASE_URL` | PostgreSQL connection URI |
+   | `SUPABASE_URL` | Supabase project URL |
+   | `SUPABASE_PUBLISHABLE_KEY` | Supabase browser-safe publishable key |
+   | `SUPABASE_SECRET_KEY` | Supabase server-only secret key |
+   | `SUPABASE_JWKS_URL` | Supabase Auth JWKS endpoint |
    | `RESEND_API_KEY` | Resend API key for budget email alerts |
 
 5. Click **Deploy**. Vercel will build and deploy your application.

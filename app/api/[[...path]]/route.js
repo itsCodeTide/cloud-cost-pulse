@@ -16,6 +16,8 @@ export const dynamic = 'force-dynamic'
 
 const MONGO_URL = process.env.MONGO_URL
 const DB_NAME = process.env.DB_NAME || 'cloud_cost_pulse'
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY
 
 const memoryDbState = globalThis.__cloud_cost_pulse_memory_db || (globalThis.__cloud_cost_pulse_memory_db = { collections: {} })
 
@@ -232,8 +234,17 @@ function createMemoryDb() {
 
 let cachedClient = null
 let cachedMemoryDb = null
+let cachedSupabaseDb = null
 let indexesReady = false
 async function getDb() {
+  if (SUPABASE_URL && SUPABASE_SECRET_KEY) {
+    if (!cachedSupabaseDb) {
+      const { createSupabaseDb } = await import('@/lib/supabase-db')
+      cachedSupabaseDb = createSupabaseDb()
+    }
+    return cachedSupabaseDb
+  }
+
   if (!MONGO_URL) {
     if (!cachedMemoryDb) cachedMemoryDb = createMemoryDb()
     return cachedMemoryDb
