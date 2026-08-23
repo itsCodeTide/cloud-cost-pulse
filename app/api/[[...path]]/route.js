@@ -337,6 +337,20 @@ async function syncWorkspaceIdentity(db, { userId, tenantId, isOrg, profile = {}
   _identitySynced.add(key)
 }
 
+async function recordActivity(db, authRes, request, route) {
+  try {
+    await db.collection('user_activity').insertOne({
+      id: uuidv4(), userId: authRes.userId, tenantId: authRes.tenantId,
+      activity_type: 'api_request', route: `/api/${route || ''}`, method: request.method,
+      ip_address: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null,
+      user_agent: request.headers.get('user-agent') || null,
+      metadata: { isOrg: !!authRes.isOrg }, occurred_at: new Date(), created_at: new Date(),
+    })
+  } catch (error) {
+    console.error('activity log error', error.message)
+  }
+}
+
 // ---------------------------------------------------------------- audit + notify
 async function audit(db, tenantId, userId, { action, entity, entity_id = null, prev_value = null, new_value = null }) {
   try {
@@ -880,6 +894,7 @@ export async function GET(request, ctx) {
 
     const db = await getDb()
     await syncWorkspaceIdentity(db, authRes)
+    await recordActivity(db, authRes, request, path)
     if (path === 'analytics') {
       const cacheKey = `${tenantId}:analytics`
       const cached = cacheGet(cacheKey)
@@ -1019,6 +1034,11 @@ export async function GET(request, ctx) {
 
     if (path === 'audit') {
       const items = await db.collection('audit_logs').find({ tenantId }).sort({ created_at: -1 }).limit(100).toArray()
+      return ok(items.map(({ _id, ...r }) => r))
+    }
+
+    if (path === 'activity') {
+      const items = await db.collection('user_activity').find({ tenantId }).sort({ occurred_at: -1 }).limit(200).toArray()
       return ok(items.map(({ _id, ...r }) => r))
     }
 
@@ -1166,6 +1186,7 @@ export async function POST(request, ctx) {
 
     const db = await getDb()
     await syncWorkspaceIdentity(db, authRes)
+    await recordActivity(db, authRes, request, path)
     await seedIfEmptyForTenant(db, tenantId)
     const body = await request.json().catch(() => ({}))
 
@@ -1542,6 +1563,7 @@ export async function PUT(request, ctx) {
     const { tenantId, userId } = authRes
     const db = await getDb()
     await syncWorkspaceIdentity(db, authRes)
+    await recordActivity(db, authRes, request, parts.join('/'))
     const body = await request.json().catch(() => ({}))
 
     if (parts[0] === 'resources' && parts[1]) {
@@ -1588,6 +1610,7 @@ export async function DELETE(request, ctx) {
     const { tenantId, userId } = authRes
     const db = await getDb()
     await syncWorkspaceIdentity(db, authRes)
+    await recordActivity(db, authRes, request, parts.join('/'))
 
     if (parts[0] === 'resources' && parts[1]) {
       const id = parts[1]
