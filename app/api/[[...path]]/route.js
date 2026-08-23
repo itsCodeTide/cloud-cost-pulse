@@ -36,6 +36,7 @@ function cacheClear(tenantId) {
 
 // ---- Seed-check cache to avoid re-running seedIfEmpty on every request ----
 const _seeded = globalThis.__ccp_seeded || (globalThis.__ccp_seeded = new Set())
+const _identitySynced = globalThis.__ccp_identity_synced || (globalThis.__ccp_identity_synced = new Set())
 
 function cloneValue(value) {
   if (value === undefined) return undefined
@@ -299,14 +300,41 @@ function fmtMoney(n, currency = 'INR') {
 
 async function requireAuth() {
   try {
-    const { userId, orgId } = await auth()
+    const { userId, orgId, sessionClaims } = await auth()
     if (!userId) {
       return { userId: 'demo_user', tenantId: 'demo_tenant', isOrg: false }
     }
-    return { userId, tenantId: orgId || userId, isOrg: !!orgId }
+    return {
+      userId,
+      tenantId: orgId || userId,
+      isOrg: !!orgId,
+      profile: {
+        email: sessionClaims?.email || sessionClaims?.primary_email_address || null,
+        full_name: sessionClaims?.name || [sessionClaims?.first_name, sessionClaims?.last_name].filter(Boolean).join(' ') || null,
+      },
+    }
   } catch (e) {
     return { userId: 'demo_user', tenantId: 'demo_tenant', isOrg: false }
   }
+}
+
+// Keep a Supabase-editable copy of workspace and user identity alongside all
+// cloud-cost records. The sync is once per process/workspace, not per request.
+async function syncWorkspaceIdentity(db, { userId, tenantId, isOrg, profile = {} }) {
+  if (!userId || userId === 'demo_user') return
+  const key = `${tenantId}:${userId}`
+  if (_identitySynced.has(key)) return
+  await db.collection('tenants').updateOne(
+    { id: tenantId },
+    { $set: { id: tenantId, name: isOrg ? 'Organization workspace' : 'Personal workspace', plan: 'Enterprise', updated_at: new Date() }, $setOnInsert: { created_at: new Date() } },
+    { upsert: true }
+  )
+  await db.collection('users').updateOne(
+    { id: userId },
+    { $set: { id: userId, tenantId, email: profile.email || null, full_name: profile.full_name || null, role: isOrg ? 'Member' : 'Owner', last_seen_at: new Date(), updated_at: new Date() }, $setOnInsert: { created_at: new Date() } },
+    { upsert: true }
+  )
+  _identitySynced.add(key)
 }
 
 // ---------------------------------------------------------------- audit + notify
@@ -851,6 +879,7 @@ export async function GET(request, ctx) {
     const { tenantId, userId, isOrg } = authRes
 
     const db = await getDb()
+    await syncWorkspaceIdentity(db, authRes)
     if (path === 'analytics') {
       const cacheKey = `${tenantId}:analytics`
       const cached = cacheGet(cacheKey)
@@ -1136,6 +1165,7 @@ export async function POST(request, ctx) {
     const { tenantId, userId } = authRes
 
     const db = await getDb()
+    await syncWorkspaceIdentity(db, authRes)
     await seedIfEmptyForTenant(db, tenantId)
     const body = await request.json().catch(() => ({}))
 
@@ -1511,6 +1541,7 @@ export async function PUT(request, ctx) {
     if (authRes.error) return authRes.error
     const { tenantId, userId } = authRes
     const db = await getDb()
+    await syncWorkspaceIdentity(db, authRes)
     const body = await request.json().catch(() => ({}))
 
     if (parts[0] === 'resources' && parts[1]) {
@@ -1556,6 +1587,7 @@ export async function DELETE(request, ctx) {
     if (authRes.error) return authRes.error
     const { tenantId, userId } = authRes
     const db = await getDb()
+    await syncWorkspaceIdentity(db, authRes)
 
     if (parts[0] === 'resources' && parts[1]) {
       const id = parts[1]
