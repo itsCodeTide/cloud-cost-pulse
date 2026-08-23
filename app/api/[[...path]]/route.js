@@ -352,6 +352,7 @@ async function seedIfEmptyForTenant(db, tenantId, { demo = false } = {}) {
       { $setOnInsert: { tenantId, dataSource: 'empty', currency: 'INR', created_at: new Date() } },
       { upsert: true }
     )
+    _seeded.add(tenantId)
     return
   }
 
@@ -850,12 +851,12 @@ export async function GET(request, ctx) {
     const { tenantId, userId, isOrg } = authRes
 
     const db = await getDb()
-    await seedIfEmptyForTenant(db, tenantId)
-
     if (path === 'analytics') {
       const cacheKey = `${tenantId}:analytics`
       const cached = cacheGet(cacheKey)
       if (cached) return ok(cached)
+
+      await seedIfEmptyForTenant(db, tenantId)
 
       const dash = await buildDashboard(db, tenantId)
       const resources = await db.collection('resources').find({ tenantId }).toArray()
@@ -914,14 +915,21 @@ export async function GET(request, ctx) {
       const cached = cacheGet(cacheKey)
       if (cached) return ok(cached)
 
+      await seedIfEmptyForTenant(db, tenantId)
+
       const dash = await buildDashboard(db, tenantId)
-      try { await maybeBudgetNotifications(db, tenantId, dash, dash.currency) } catch (e) { console.error('budget notif', e.message) }
-      let emailAlert = null
-      try { emailAlert = await maybeSendBudgetAlerts(db, tenantId, dash) } catch (e) { console.error('alert check failed', e.message) }
-      const resData = { ...dash, workspace: { isOrg, tenantId: isOrg ? tenantId : 'personal' }, emailAlert }
+      // Notifications/email are side effects; do not hold the dashboard
+      // response open while Supabase or Resend processes them.
+      void maybeBudgetNotifications(db, tenantId, dash, dash.currency).catch((e) => console.error('budget notif', e.message))
+      void maybeSendBudgetAlerts(db, tenantId, dash).catch((e) => console.error('alert check failed', e.message))
+      const resData = { ...dash, workspace: { isOrg, tenantId: isOrg ? tenantId : 'personal' }, emailAlert: null }
       cacheSet(cacheKey, resData)
       return ok(resData)
     }
+
+    // Other data endpoints still need first-use initialization, while the
+    // dashboard/analytics paths above can return from cache without it.
+    await seedIfEmptyForTenant(db, tenantId)
 
     if (path === 'resources') {
       const url = new URL(request.url)
