@@ -6,7 +6,7 @@ This guide provides step-by-step instructions to deploy Cloud-Cost-Pulse on Verc
 
 ## 1. Prerequisites
 
-- A **Vercel** account ([vercel.com](https://vercel.com))
+- A **Vercel** or **Render** account
 - A **Clerk** account ([clerk.com](https://clerk.com))
 - A **Supabase** or **PostgreSQL** database (optional for production DB connection)
 - Node.js 18+ & npm / yarn
@@ -32,7 +32,14 @@ This guide provides step-by-step instructions to deploy Cloud-Cost-Pulse on Verc
 
 ---
 
-## 4. Deploying to Vercel
+## 4. Deploying to Render
+
+The repository includes `render.yaml`. In Render, choose **New > Blueprint**,
+connect `itsCodeTide/cloud-cost-pulse`, and select the `master` branch. Render
+will use `npm ci && npm run build` and `npm run start`. Add the values for all
+`sync: false` variables in the Render dashboard before the first deploy.
+
+## 5. Deploying to Vercel
 
 1. Push your repository to GitHub / GitLab / Bitbucket.
 2. Import your repository into Vercel.
@@ -54,7 +61,7 @@ This guide provides step-by-step instructions to deploy Cloud-Cost-Pulse on Verc
 
 ---
 
-## 5. Post-Deployment Verification
+## 6. Post-Deployment Verification
 
 1. Navigate to your Vercel deployment URL.
 2. Sign in with Google or create an account via Clerk.
