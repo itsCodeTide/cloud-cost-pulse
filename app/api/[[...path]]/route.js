@@ -1276,7 +1276,11 @@ export async function POST(request, ctx) {
           if (target) {
             await db.collection('resources').updateOne({ tenantId, id: resId }, { $set: { status: 'Inactive', monthly_cost: 0, updated_at: new Date() } })
             await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'resource', entity_id: resId, new_value: `Deallocated ${target.resource_name}` })
-          }
+          } else await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: 'Applied recommendation; target resource was already unavailable' })
+        } else {
+          // Rule-based recommendations (budget reviews, cost spikes, etc.) do not
+          // mutate a resource, but their applied decision still belongs in history.
+          await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: `Applied recommendation ${recId}` })
         }
         cacheClear(tenantId)
         broadcastDashboardUpdateWS({ event: 'recommendation_applied', recId })
@@ -1456,6 +1460,29 @@ export async function POST(request, ctx) {
         { upsert: true }
       )
       return ok({ saved: true, notification_prefs: prefs })
+    }
+
+    // Clear the live workspace without removing identity, settings, or audit history.
+    // This is intentionally separate from /reset, which is the explicit demo-data loader.
+    if (path === 'clear') {
+      const clearTargets = [
+        'resources', 'cost_history', 'cost_data', 'budgets', 'notifications', 'reports',
+        'applied_recommendations', 'budget_alerts', 'azure_connections',
+      ]
+      const results = await Promise.all(clearTargets.map((name) => db.collection(name).deleteMany({ tenantId })))
+      await db.collection('settings').updateOne(
+        { tenantId },
+        { $set: { dataSource: 'empty', lastSyncAt: null, updated_at: new Date() }, $setOnInsert: { tenantId, currency: 'INR' } },
+        { upsert: true }
+      )
+      const removed = results.reduce((total, result) => total + (result.deletedCount || 0), 0)
+      await audit(db, tenantId, userId, {
+        action: 'clear_workspace', entity: 'workspace',
+        new_value: `Cleared ${removed} records; identity, settings and history preserved`,
+      })
+      cacheClear(tenantId)
+      broadcastDashboardUpdateWS({ event: 'workspace_cleared', tenantId })
+      return ok({ ok: true, removed, cleared: clearTargets })
     }
 
     if (path === 'reset') {

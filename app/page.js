@@ -9,7 +9,7 @@ import {
   RefreshCw, Unplug, Send, Users, Plus, Pencil, Trash2, Filter, X, Clock, Info, Upload,
   Database, FileSpreadsheet, ShieldAlert, Check, ChevronRight, Eye, Layers, Shield, Play,
   Maximize2, Minimize2, Image, BarChart2, LineChart as LineChartIcon, Palette, ZoomIn, ZoomOut, ToggleLeft, Hash,
-  CalendarDays
+  CalendarDays, History as HistoryIcon
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -53,6 +53,7 @@ const NAV = [
   { id: 'recommendations', label: 'Optimize', icon: Lightbulb },
   { id: 'reports', label: 'Reports', icon: FileText },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
+  { id: 'history', label: 'History', icon: HistoryIcon },
   { id: 'profile', label: 'Profile', icon: User },
 ]
 
@@ -2141,6 +2142,7 @@ function SettingsPage({ refresh, currency, onCurrency }) {
   const [rules, setRules] = useState({ idleCostThreshold: 500, spikePct: 25, budgetWarnPct: 80 })
   const [notifPrefs, setNotifPrefs] = useState({ inApp: true, budgetAlerts: true, optAlerts: true, emailAlerts: true })
   const [busy, setBusy] = useState('')
+  const [clearOpen, setClearOpen] = useState(false)
 
   const loadSettings = async () => {
     try {
@@ -2184,6 +2186,21 @@ function SettingsPage({ refresh, currency, onCurrency }) {
       downloadFile(JSON.stringify(data, null, 2), `ccp-backup-${new Date().toISOString().slice(0, 10)}.json`, 'application/json')
       toast.success('Workspace backup exported')
     } catch { toast.error('Export failed') }
+  }
+
+  const clearWorkspace = async () => {
+    setBusy('clear')
+    try {
+      const res = await fetch('/api/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Clear failed')
+      setClearOpen(false)
+      toast.success('Workspace data cleared', { description: 'Charts, resources, budgets, reports and active notifications were reset. History was preserved.' })
+      await loadSettings()
+      refresh?.()
+    } catch (e) {
+      toast.error('Unable to clear workspace data', { description: e.message })
+    } finally { setBusy('') }
   }
 
   const alerts = settings?.alerts || []
@@ -2276,6 +2293,52 @@ function SettingsPage({ refresh, currency, onCurrency }) {
         <CardHeader><CardTitle className="flex items-center gap-2"><Database className="h-5 w-5 text-emerald-400" /> Data Management &amp; Backup</CardTitle><CardDescription>Backup your entire FinOps workspace state or restore from JSON.</CardDescription></CardHeader>
         <CardContent className="flex gap-3">
           <Button variant="outline" onClick={exportBackup}><Download className="h-4 w-4 mr-2" /> Export Workspace JSON</Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-red-500/30">
+        <CardHeader><CardTitle className="flex items-center gap-2 text-red-400"><Trash2 className="h-5 w-5" /> Clear workspace data</CardTitle><CardDescription>Remove uploaded cloud data, resources, costs, budgets, reports and active notifications. Your user identity, settings and complete action history remain available.</CardDescription></CardHeader>
+        <CardContent>
+          <AlertDialog open={clearOpen} onOpenChange={setClearOpen}>
+            <Button variant="outline" className="text-red-400 border-red-500/40 hover:bg-red-500/10" onClick={() => setClearOpen(true)}><Trash2 className="h-4 w-4 mr-2" /> Clear data and reset charts</Button>
+            <AlertDialogContent>
+              <AlertDialogHeader><AlertDialogTitle>Clear all workspace data?</AlertDialogTitle><AlertDialogDescription>This permanently removes the workspace&apos;s resources, uploaded cost data, budgets, reports, recommendations and active notifications. The action is recorded in History and cannot be undone except by re-uploading or importing a backup.</AlertDialogDescription></AlertDialogHeader>
+              <AlertDialogFooter><AlertDialogCancel disabled={busy === 'clear'}>Cancel</AlertDialogCancel><AlertDialogAction onClick={(e) => { e.preventDefault(); clearWorkspace() }} disabled={busy === 'clear'}>{busy === 'clear' ? 'Clearing…' : 'Clear workspace'}</AlertDialogAction></AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// ============================ HISTORY PAGE ============================
+function HistoryPage({ data }) {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const loadHistory = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [auditRes, activityRes] = await Promise.all([fetch('/api/audit'), fetch('/api/activity')])
+      const audit = auditRes.ok ? await auditRes.json() : []
+      const activity = activityRes.ok ? await activityRes.json() : []
+      const merged = [
+        ...(Array.isArray(audit) ? audit : []).map((item) => ({ ...item, kind: 'Action', at: item.created_at })),
+        ...(Array.isArray(activity) ? activity : []).map((item) => ({ ...item, kind: 'Activity', at: item.occurred_at || item.created_at })),
+      ].sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+      setItems(merged)
+    } catch { toast.error('Failed to load history') } finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { loadHistory() }, [loadHistory, data])
+
+  return (
+    <div className="space-y-6 max-w-5xl">
+      <div className="flex items-center justify-between gap-3"><div><h2 className="text-2xl font-semibold">History</h2><p className="text-sm text-muted-foreground mt-1">Every applied, accepted, dismissed, created, updated and deleted action in this workspace.</p></div><Button variant="outline" size="sm" onClick={loadHistory} disabled={loading}><RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh</Button></div>
+      <Card>
+        <CardContent className="p-0">
+          {loading ? <div className="p-8 text-center text-sm text-muted-foreground">Loading history…</div> : items.length === 0 ? <div className="p-10 text-center text-sm text-muted-foreground">No actions yet. Applied changes will appear here.</div> : <ScrollArea className="h-[calc(100vh-230px)] min-h-96"><div className="divide-y divide-border/50">{items.map((item, index) => <div key={`${item.kind}-${item.id || index}`} className="flex items-start gap-3 px-4 py-3.5 text-sm"><Badge variant="outline" className="shrink-0 capitalize">{item.kind}</Badge><div className="min-w-0 flex-1"><div className="font-medium capitalize">{item.action || item.method || 'Activity'}{item.entity ? ` · ${item.entity}` : ''}{item.route ? ` · ${item.route}` : ''}</div>{(item.prev_value || item.new_value || item.status_code) && <div className="text-xs text-muted-foreground mt-1 break-words">{item.prev_value ? `from ${item.prev_value} ` : ''}{item.new_value ? `→ ${item.new_value} ` : ''}{item.status_code ? `(${item.status_code})` : ''}</div>}</div><time className="text-[11px] text-muted-foreground shrink-0">{item.at ? new Date(item.at).toLocaleString() : '—'}</time></div>)}</div></ScrollArea>}
         </CardContent>
       </Card>
     </div>
@@ -2512,6 +2575,7 @@ export default function App() {
           {active === 'recommendations' && <RecommendationsPage data={data} refresh={load} />}
           {active === 'reports' && <ReportsPage data={data} mainRef={mainRef} refresh={load} />}
           {active === 'settings' && <SettingsPage refresh={load} currency={currency} onCurrency={handleCurrency} />}
+          {active === 'history' && <HistoryPage data={data} />}
           {active === 'profile' && <ProfilePage goSettings={() => setActive('settings')} data={data} />}
         </main>
       </div>
