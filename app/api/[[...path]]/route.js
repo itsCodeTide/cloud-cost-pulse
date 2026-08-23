@@ -344,9 +344,9 @@ async function seedIfEmptyForTenant(db, tenantId, { demo = false } = {}) {
   const marker = await db.collection('meta').findOne({ _id: `seed:${SEED_VERSION}:${tenantId}` })
   if (marker?.done) { _seeded.add(tenantId); return }
 
-  // New workspaces start empty unless demo mode or demo_tenant is specified
-  const isDemoTenant = tenantId === 'demo_tenant'
-  if (!demo && !isDemoTenant) {
+  // Every authenticated workspace starts empty. Demo data is only created by
+  // the explicit demo/reseed action, never as a side effect of first login.
+  if (!demo) {
     await db.collection('settings').updateOne(
       { tenantId },
       { $setOnInsert: { tenantId, dataSource: 'empty', currency: 'INR', created_at: new Date() } },
