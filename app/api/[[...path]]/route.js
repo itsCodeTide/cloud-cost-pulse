@@ -1253,10 +1253,11 @@ export async function POST(request, ctx) {
       const remainingRows = await db.collection('tenants').find({ owner_id: userId, id: { $ne: targetId } }).sort({ created_at: 1 }).toArray()
       const remaining = remainingRows.length
       if (!remaining) return ok({ error: 'Create another workspace before deleting your only workspace' }, 400)
-      await audit(db, tenantId, userId, { action: 'delete_workspace', entity: 'workspace', entity_id: targetId, prev_value: workspace.name, new_value: 'Workspace deleted' })
-      for (const collection of ['resources', 'cost_history', 'cost_data', 'budgets', 'notifications', 'reports', 'applied_recommendations', 'azure_connections', 'settings', 'audit_logs', 'user_activity', 'meta']) await db.collection(collection).deleteMany({ tenantId: targetId })
+      if (targetId !== tenantId) await audit(db, tenantId, userId, { action: 'delete_workspace', entity: 'workspace', entity_id: targetId, prev_value: workspace.name, new_value: 'Workspace deleted' })
+      for (const collection of ['resources', 'cost_history', 'cost_data', 'budgets', 'notifications', 'reports', 'applied_recommendations', 'budget_alerts', 'azure_connections', 'settings', 'audit_logs', 'user_activity', 'meta', 'alerts', 'roles']) await db.collection(collection).deleteMany({ tenantId: targetId })
       await db.collection('tenants').deleteMany({ id: targetId, owner_id: userId })
       cacheClear(targetId)
+      if (targetId === tenantId) await audit(db, remainingRows[0].id, userId, { action: 'delete_workspace', entity: 'workspace', entity_id: targetId, prev_value: workspace.name, new_value: 'Workspace deleted' })
       const response = ok({ ok: true, deleted: targetId })
       if (targetId === tenantId) response.cookies.set('ccp_workspace_id', remainingRows[0].id, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 60 * 60 * 24 * 365, path: '/' })
       return response
