@@ -321,8 +321,20 @@ async function requireAuth() {
 async function resolveWorkspace(db, request, authRes) {
   const requestedId = request.headers.get('x-workspace-id') || request.cookies.get('ccp_workspace_id')?.value
   if (!requestedId || requestedId === authRes.tenantId || authRes.userId === 'demo_user') return authRes
-  const workspace = await db.collection('tenants').findOne({ id: requestedId, owner_id: authRes.userId })
+  const workspace = await getOwnedWorkspace(db, requestedId, authRes.userId)
   return workspace ? { ...authRes, tenantId: requestedId, isOrg: false } : authRes
+}
+
+function isWorkspaceOwner(workspace, workspaceId, userId) {
+  // Personal workspaces historically used the Clerk user ID as their tenant
+  // ID and may not have owner_id populated yet. Treat that legacy shape as
+  // owned by the signed-in user while keeping explicit ownership enforced.
+  return !!workspace && (workspace.owner_id === userId || (workspaceId === userId && !workspace.owner_id))
+}
+
+async function getOwnedWorkspace(db, workspaceId, userId) {
+  const workspace = await db.collection('tenants').findOne({ id: workspaceId })
+  return isWorkspaceOwner(workspace, workspaceId, userId) ? workspace : null
 }
 
 // Keep a Supabase-editable copy of workspace and user identity alongside all
@@ -1228,7 +1240,7 @@ export async function POST(request, ctx) {
 
     if (path === 'workspaces/switch') {
       const workspaceId = String(body.id || '')
-      const workspace = await db.collection('tenants').findOne({ id: workspaceId, owner_id: userId })
+      const workspace = await getOwnedWorkspace(db, workspaceId, userId)
       if (!workspace) return ok({ error: 'Workspace not found' }, 404)
       await audit(db, tenantId, userId, { action: 'switch_workspace', entity: 'workspace', entity_id: workspaceId, new_value: workspace.name })
       const response = ok({ ok: true, workspace: { id: workspace.id, name: workspace.name } })
@@ -1239,7 +1251,7 @@ export async function POST(request, ctx) {
     if (path === 'workspaces/update') {
       const name = String(body.name || '').trim()
       if (!name) return ok({ error: 'Workspace name is required' }, 400)
-      const previous = await db.collection('tenants').findOne({ id: tenantId, owner_id: userId })
+      const previous = await getOwnedWorkspace(db, tenantId, userId)
       if (!previous) return ok({ error: 'Only workspace owners can edit this workspace' }, 403)
       await db.collection('tenants').updateOne({ id: tenantId }, { $set: { name, updated_at: new Date() } })
       await audit(db, tenantId, userId, { action: 'update_workspace', entity: 'workspace', entity_id: tenantId, prev_value: previous.name, new_value: name })
@@ -1248,9 +1260,10 @@ export async function POST(request, ctx) {
 
     if (path === 'workspaces/delete') {
       const targetId = String(body.id || tenantId)
-      const workspace = await db.collection('tenants').findOne({ id: targetId, owner_id: userId })
+      const workspace = await getOwnedWorkspace(db, targetId, userId)
       if (!workspace) return ok({ error: 'Only workspace owners can delete this workspace' }, 403)
-      const remainingRows = await db.collection('tenants').find({ owner_id: userId, id: { $ne: targetId } }).sort({ created_at: 1 }).toArray()
+      const allWorkspaces = await db.collection('tenants').find({}).sort({ created_at: 1 }).toArray()
+      const remainingRows = allWorkspaces.filter((row) => row.id !== targetId && isWorkspaceOwner(row, row.id, userId))
       const remaining = remainingRows.length
       if (!remaining) return ok({ error: 'Create another workspace before deleting your only workspace' }, 400)
       if (targetId !== tenantId) await audit(db, tenantId, userId, { action: 'delete_workspace', entity: 'workspace', entity_id: targetId, prev_value: workspace.name, new_value: 'Workspace deleted' })
