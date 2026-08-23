@@ -1377,8 +1377,9 @@ function RecCard({ r, currency, onApply }) {
 }
 
 // ============================ DASHBOARD PAGE ============================
-function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, onApplyRec }) {
+function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, onApplyRec, onClearWorkspace }) {
   const [timeRange, setTimeRange] = useState('all')
+  const [clearOpen, setClearOpen] = useState(false)
   if (!data) return <LoadingGrid />
   const { stats, services, trend, serviceBreakdown, forecast, budget, recommendations } = data
   const currency = data.currency || 'INR'
@@ -1417,7 +1418,8 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
             <div className="text-[11px] text-muted-foreground">Adjust global time range across all 7 charts or customize each individually</div>
           </div>
         </div>
-        <div className="flex items-center gap-1 bg-background/80 p-1 rounded-lg border border-border/60 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-1 bg-background/80 p-1 rounded-lg border border-border/60">
           <span className="text-[11px] font-medium text-muted-foreground px-2 flex items-center gap-1">
             <CalendarDays className="h-3 w-3 text-cyan-400" /> Range:
           </span>
@@ -1434,6 +1436,9 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
               {r.shortLabel || r.label}
             </button>
           ))}
+        </div>
+        <Button variant="outline" size="sm" onClick={onOpenDemoModal} title="Reset charts with demo dataset"><RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Reset dataset</Button>
+        <AlertDialog open={clearOpen} onOpenChange={setClearOpen}><Button variant="outline" size="sm" className="text-red-400 border-red-500/40 hover:bg-red-500/10" onClick={() => setClearOpen(true)}><Trash2 className="h-3.5 w-3.5 mr-1.5" /> Clear all data</Button><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Clear dashboard data and charts?</AlertDialogTitle><AlertDialogDescription>This removes all resources, uploaded costs, budgets, reports, recommendations and active notifications for this workspace. Your workspace and History are preserved.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={(e) => { e.preventDefault(); onClearWorkspace?.(() => setClearOpen(false)) }}>Clear all data</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
         </div>
       </div>
 
@@ -2357,6 +2362,20 @@ function WorkspacesPage() {
 }
 
 // ============================ HISTORY PAGE ============================
+const HISTORY_TITLES = {
+  apply_recommendation: 'Recommendation Applied', dismiss_recommendation: 'Recommendation Dismissed',
+  create_workspace: 'Workspace Created', update_workspace: 'Workspace Saved', delete_workspace: 'Workspace Deleted', switch_workspace: 'Workspace Switched',
+  clear_workspace: 'Workspace Data Cleared', reset_dataset: 'Dataset Reset', accept_notification: 'Notification Accepted', dismiss_notification: 'Notification Dismissed',
+  upload: 'Cloud Data Uploaded', restore_backup: 'Workspace Backup Restored', create: 'Resource Created', update: 'Resource Updated', delete: 'Resource Deleted',
+  bulk_delete: 'Resources Deleted', bulk_status: 'Resource Status Updated', generate: 'Report Generated', connect: 'Azure Connected', disconnect: 'Azure Disconnected',
+  edit_tags: 'Resource Tags Updated', assign_role: 'Role Assigned', create_alert: 'Alert Created', activate_alert: 'Alert Activated', deactivate_alert: 'Alert Deactivated',
+}
+function historyTitle(item) {
+  if (HISTORY_TITLES[item.action]) return HISTORY_TITLES[item.action]
+  const entity = item.entity ? String(item.entity).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Workspace'
+  return `${entity} Action`
+}
+
 function HistoryPage({ data }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2378,7 +2397,7 @@ function HistoryPage({ data }) {
       <div className="flex items-center justify-between gap-3"><div><h2 className="text-2xl font-semibold">History</h2><p className="text-sm text-muted-foreground mt-1">Only actions you took are shown here: applied, created, updated, accepted, dismissed and deleted.</p></div><Button variant="outline" size="sm" onClick={loadHistory} disabled={loading}><RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh</Button></div>
       <Card>
         <CardContent className="p-0">
-          {loading ? <div className="p-8 text-center text-sm text-muted-foreground">Loading history…</div> : items.length === 0 ? <div className="p-10 text-center text-sm text-muted-foreground">No actions yet. Applied changes will appear here.</div> : <ScrollArea className="h-[calc(100vh-230px)] min-h-96"><div className="divide-y divide-border/50">{items.map((item, index) => <div key={`${item.kind}-${item.id || index}`} className="flex items-start gap-3 px-4 py-3.5 text-sm"><Badge variant="outline" className="shrink-0 capitalize">{item.kind}</Badge><div className="min-w-0 flex-1"><div className="font-medium capitalize">{item.action || item.method || 'Activity'}{item.entity ? ` · ${item.entity}` : ''}{item.route ? ` · ${item.route}` : ''}</div>{(item.prev_value || item.new_value || item.status_code) && <div className="text-xs text-muted-foreground mt-1 break-words">{item.prev_value ? `from ${item.prev_value} ` : ''}{item.new_value ? `→ ${item.new_value} ` : ''}{item.status_code ? `(${item.status_code})` : ''}</div>}</div><time className="text-[11px] text-muted-foreground shrink-0">{item.at ? new Date(item.at).toLocaleString() : '—'}</time></div>)}</div></ScrollArea>}
+          {loading ? <div className="p-8 text-center text-sm text-muted-foreground">Loading history…</div> : items.length === 0 ? <div className="p-10 text-center text-sm text-muted-foreground">No actions yet. Applied changes will appear here.</div> : <ScrollArea className="h-[calc(100vh-230px)] min-h-96"><div className="divide-y divide-border/50">{items.map((item, index) => <div key={`${item.kind}-${item.id || index}`} className="flex items-start gap-3 px-4 py-3.5 text-sm"><Badge variant="outline" className="shrink-0">{item.kind}</Badge><div className="min-w-0 flex-1"><div className="font-medium">{historyTitle(item)}</div><div className="text-xs text-muted-foreground">{item.entity ? String(item.entity).replace(/_/g, ' ') : 'workspace'}{item.entity_id ? ` · ${item.entity_id}` : ''}</div>{(item.prev_value || item.new_value) && <div className="text-xs text-muted-foreground mt-1 break-words">{item.prev_value ? `Previous: ${item.prev_value} ` : ''}{item.new_value ? `Result: ${item.new_value}` : ''}</div>}</div><time className="text-[11px] text-muted-foreground shrink-0">{item.at ? new Date(item.at).toLocaleString() : '—'}</time></div>)}</div></ScrollArea>}
         </CardContent>
       </Card>
     </div>
@@ -2525,6 +2544,17 @@ export default function App() {
     }
   }
 
+  const handleClearWorkspace = async (closeDialog) => {
+    toast.loading('Clearing workspace data…', { id: 'clear-workspace' })
+    try {
+      const res = await fetch('/api/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Clear failed')
+      closeDialog?.(); await load()
+      toast.success('All dashboard data cleared', { id: 'clear-workspace', description: 'Charts are reset to zero. The action is saved in History.' })
+    } catch (e) { toast.error('Unable to clear dashboard data', { id: 'clear-workspace', description: e.message }) }
+  }
+
   const handleReadNotif = () => { loadNotif() }
 
   const handleReadAllNotif = async () => {
@@ -2608,7 +2638,7 @@ export default function App() {
         <MobileNav active={active} setActive={setActive} />
 
         <main ref={mainRef} className="flex-1 p-3 sm:p-6 md:p-8 overflow-y-auto">
-          {active === 'dashboard' && <DashboardPage data={data} onOpenDemoModal={() => setDemoModalOpen(true)} onOpenImportModal={() => setImportModalOpen(true)} onNavigate={handleNavigate} onApplyRec={handleApplyRecommendation} />}
+          {active === 'dashboard' && <DashboardPage data={data} onOpenDemoModal={() => setDemoModalOpen(true)} onOpenImportModal={() => setImportModalOpen(true)} onNavigate={handleNavigate} onApplyRec={handleApplyRecommendation} onClearWorkspace={handleClearWorkspace} />}
           {active === 'resources' && <ResourcesPage currency={currency} onDataChange={load} externalSearch={topSearch} />}
           {active === 'analytics' && <AnalyticsPage data={data} />}
           {active === 'budget' && <BudgetPage data={data} refresh={load} />}

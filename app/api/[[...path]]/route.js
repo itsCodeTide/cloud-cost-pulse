@@ -1553,13 +1553,13 @@ export async function POST(request, ctx) {
           db.collection('cost_data').deleteMany({ tenantId, source: { $ne: 'azure' } }),
           db.collection('budgets').deleteMany({ tenantId }),
           db.collection('notifications').deleteMany({ tenantId }),
-          db.collection('audit_logs').deleteMany({ tenantId }),
           db.collection('reports').deleteMany({ tenantId }),
           db.collection('meta').deleteMany({ _id: `seed:${SEED_VERSION}:${tenantId}` }),
         ])
       }
       cacheClear(tenantId)
       await seedIfEmptyForTenant(db, tenantId, { demo: true })
+      await audit(db, tenantId, userId, { action: 'reset_dataset', entity: 'workspace', new_value: 'Loaded the FinOps demo dataset and reset dashboard charts' })
       return ok({ status: 'reseeded', mode })
     }
 
