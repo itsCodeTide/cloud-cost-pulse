@@ -1191,6 +1191,7 @@ export async function POST(request, ctx) {
   try {
     const params = await ctx.params
     const path = (params?.path || []).join('/')
+    const parts = path.split('/')
 
     const authRes = await requireAuth()
     if (authRes.error) return authRes.error
