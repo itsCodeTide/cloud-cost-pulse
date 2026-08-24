@@ -693,14 +693,12 @@ function StatCard({ icon: Icon, label, value, sub, tone = 'blue' }) {
     <Card className="relative overflow-hidden border-border/60">
       <div className={`absolute inset-0 bg-gradient-to-br ${toneMap[tone]} opacity-60 pointer-events-none`} />
       <CardContent className="relative p-3.5 min-[420px]:p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
+        <div className="pr-11 sm:pr-14 min-w-0">
             <p className="text-[10px] sm:text-xs uppercase tracking-wider text-muted-foreground truncate">{label}</p>
             <p className="mt-1 sm:mt-2 text-xl sm:text-2xl font-bold tracking-tight">{value}</p>
             {sub && <p className="mt-1 text-[11px] text-muted-foreground truncate">{sub}</p>}
-          </div>
-          <div className={`h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-background/60 backdrop-blur grid place-items-center self-center shrink-0 ${toneMap[tone].split(' ').slice(-1)[0]}`}><Icon className="h-4 w-4 sm:h-5 sm:w-5" /></div>
         </div>
+        <div className={`absolute right-3.5 top-3.5 h-8 w-8 sm:right-5 sm:top-5 sm:h-10 sm:w-10 rounded-lg bg-background/60 backdrop-blur grid place-items-center ${toneMap[tone].split(' ').slice(-1)[0]}`}><Icon className="h-4 w-4 sm:h-5 sm:w-5" /></div>
       </CardContent>
     </Card>
   )
