@@ -137,5 +137,13 @@ code {
     }
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
     }
+}
+
+@layer utilities {
+  .break-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
 }

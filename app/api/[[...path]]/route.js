@@ -1316,48 +1316,67 @@ export async function POST(request, ctx) {
       const recAction = parts[2] // 'apply' or 'dismiss'
 
       if (recAction === 'apply') {
-        await db.collection('applied_recommendations').updateOne(
-          { tenantId, recId },
-          { $set: { tenantId, recId, applied_at: new Date(), applied_by: userId } },
-          { upsert: true }
-        )
-        // Handle specific optimization actions on resources in DB
+        // Applying an action is idempotent. A retry after a network timeout must
+        // not apply a second discount or create a second history entry.
+        const previous = await db.collection('applied_recommendations').findOne({ tenantId, recId, applied_at: { $exists: true } })
+        if (previous) return ok({ ok: true, appliedId: recId, alreadyApplied: true, result: previous.result || null })
+
+        const now = new Date()
+        let result = { affectedResources: 0, monthlySavings: 0 }
+        let historyEntity = 'recommendation'
+        let historyId = recId
+        let historyMessage = `Applied recommendation ${recId}`
+
+        // Mutate resources first. The applied marker is written only after a
+        // successful mutation so failed actions cannot disappear from the UI.
         if (recId === 'rec-vm-ri') {
           const vms = await db.collection('resources').find({ tenantId, status: 'Active', service_type: 'Azure Virtual Machine' }).toArray()
-          for (const vm of vms) {
-            const newCost = Math.max(100, Math.round(vm.monthly_cost * 0.8))
-            await db.collection('resources').updateOne({ tenantId, id: vm.id }, { $set: { monthly_cost: newCost, updated_at: new Date() } })
-          }
-          await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: 'Applied 20% Reserved Instance discount to active Virtual Machines' })
+          result.affectedResources = vms.length
+          result.monthlySavings = vms.reduce((sum, vm) => sum + (vm.monthly_cost - Math.max(100, Math.round(vm.monthly_cost * 0.8))), 0)
+          for (const vm of vms) await db.collection('resources').updateOne({ tenantId, id: vm.id, status: 'Active' }, { $set: { monthly_cost: Math.max(100, Math.round(vm.monthly_cost * 0.8)), updated_at: now } })
+          historyMessage = `Applied 20% Reserved Instance discount to ${vms.length} active Virtual Machine(s)`
         } else if (recId === 'rec-storage-archive') {
           const storages = await db.collection('resources').find({ tenantId, status: 'Active', service_type: 'Azure Storage' }).toArray()
-          for (const st of storages) {
-            const newCost = Math.max(100, Math.round(st.monthly_cost * 0.85))
-            await db.collection('resources').updateOne({ tenantId, id: st.id }, { $set: { monthly_cost: newCost, updated_at: new Date() } })
-          }
-          await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: 'Applied 15% Storage Archive tier optimization' })
+          result.affectedResources = storages.length
+          result.monthlySavings = storages.reduce((sum, st) => sum + (st.monthly_cost - Math.max(100, Math.round(st.monthly_cost * 0.85))), 0)
+          for (const st of storages) await db.collection('resources').updateOne({ tenantId, id: st.id, status: 'Active' }, { $set: { monthly_cost: Math.max(100, Math.round(st.monthly_cost * 0.85)), updated_at: now } })
+          historyMessage = `Applied 15% Storage Archive optimization to ${storages.length} resource(s)`
         } else if (recId === 'rec-sql-rightsize') {
           const sqls = await db.collection('resources').find({ tenantId, status: 'Active', service_type: 'Azure SQL Database' }).toArray()
-          for (const sq of sqls) {
-            const newCost = Math.max(100, Math.round(sq.monthly_cost * 0.88))
-            await db.collection('resources').updateOne({ tenantId, id: sq.id }, { $set: { monthly_cost: newCost, updated_at: new Date() } })
-          }
-          await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: 'Applied 12% Azure SQL right-sizing optimization' })
+          result.affectedResources = sqls.length
+          result.monthlySavings = sqls.reduce((sum, sq) => sum + (sq.monthly_cost - Math.max(100, Math.round(sq.monthly_cost * 0.88))), 0)
+          for (const sq of sqls) await db.collection('resources').updateOne({ tenantId, id: sq.id, status: 'Active' }, { $set: { monthly_cost: Math.max(100, Math.round(sq.monthly_cost * 0.88)), updated_at: now } })
+          historyMessage = `Applied 12% Azure SQL right-sizing to ${sqls.length} resource(s)`
         } else if (recId.startsWith('rec-idle-')) {
           const resId = recId.replace('rec-idle-', '')
           const target = await db.collection('resources').findOne({ tenantId, id: resId })
           if (target) {
-            await db.collection('resources').updateOne({ tenantId, id: resId }, { $set: { status: 'Inactive', monthly_cost: 0, updated_at: new Date() } })
-            await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'resource', entity_id: resId, new_value: `Deallocated ${target.resource_name}` })
-          } else await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: 'Applied recommendation; target resource was already unavailable' })
+            const savings = target.status === 'Active' ? 0 : Number(target.monthly_cost) || 0
+            await db.collection('resources').updateOne({ tenantId, id: resId }, { $set: { status: 'Inactive', monthly_cost: 0, updated_at: now } })
+            result = { affectedResources: 1, monthlySavings: savings }
+            historyEntity = 'resource'; historyId = resId
+            historyMessage = `Deallocated ${target.resource_name}; monthly cost reduced to 0`
+          } else return ok({ error: 'The target resource no longer exists' }, 409)
         } else {
-          // Rule-based recommendations (budget reviews, cost spikes, etc.) do not
-          // mutate a resource, but their applied decision still belongs in history.
-          await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: 'recommendation', entity_id: recId, new_value: `Applied recommendation ${recId}` })
+          // Rule-based review recommendations intentionally have no resource
+          // mutation, but the decision is still persisted in the action log.
+          historyMessage = `Applied recommendation ${recId}`
         }
+
+        if (['rec-vm-ri', 'rec-storage-archive', 'rec-sql-rightsize'].includes(recId) && result.affectedResources === 0) {
+          return ok({ error: 'This recommendation is no longer applicable' }, 409)
+        }
+        await db.collection('applied_recommendations').updateOne(
+          { tenantId, recId },
+          { $set: { tenantId, recId, applied_at: now, applied_by: userId, result } },
+          { upsert: true }
+        )
+        await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: historyEntity, entity_id: historyId, new_value: historyMessage })
+        await notify(db, tenantId, { type: 'recommendation', severity: 'success', title: 'Optimization applied', message: `${historyMessage}. Saved in action history.` })
         cacheClear(tenantId)
         broadcastDashboardUpdateWS({ event: 'recommendation_applied', recId })
-        return ok({ ok: true, appliedId: recId })
+        broadcastDashboardUpdate({ event: 'recommendation_applied', recId })
+        return ok({ ok: true, appliedId: recId, result })
       }
 
       if (recAction === 'dismiss') {

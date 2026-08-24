@@ -553,7 +553,7 @@ function Topbar({ active, onOpenDemoModal, onOpenImportModal, onOpenSearch, data
               </Select>
               <OrganizationSwitcher afterSelectOrganizationUrl="/" afterSelectPersonalUrl="/" hidePersonal={false}
                 appearance={{ elements: { rootBox: 'hidden md:flex items-center', organizationSwitcherTrigger: 'px-2 py-1.5 rounded-lg border border-border bg-muted/40 text-foreground text-xs' } }} />
-              <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={onOpenDemoModal} title="Load Demo Data"><RefreshCw className="h-4 w-4" /></Button>
+              <Button variant="ghost" size="icon" className="hidden sm:inline-flex h-8 w-8 sm:h-9 sm:w-9" onClick={onOpenDemoModal} title="Load Demo Data"><RefreshCw className="h-4 w-4" /></Button>
               <Button variant="ghost" size="icon" className="h-8 w-8 sm:h-9 sm:w-9" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</Button>
               <NotificationBell notif={notif} onRead={onReadNotif} onReadAll={onReadAll} onReadItem={onReadItem} onDeleteItem={onDeleteItem} onClearAll={onClearAll} />
               <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: 'h-7 w-7 sm:h-8 sm:w-8' } }} />
@@ -692,14 +692,14 @@ function StatCard({ icon: Icon, label, value, sub, tone = 'blue' }) {
   return (
     <Card className="relative overflow-hidden border-border/60">
       <div className={`absolute inset-0 bg-gradient-to-br ${toneMap[tone]} opacity-60 pointer-events-none`} />
-      <CardContent className="relative p-4 sm:p-5">
-        <div className="flex items-start justify-between">
-          <div>
+      <CardContent className="relative p-3.5 min-[420px]:p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
             <p className="text-[10px] sm:text-xs uppercase tracking-wider text-muted-foreground truncate">{label}</p>
             <p className="mt-1 sm:mt-2 text-xl sm:text-2xl font-bold tracking-tight">{value}</p>
             {sub && <p className="mt-1 text-[11px] text-muted-foreground truncate">{sub}</p>}
           </div>
-          <div className={`h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-background/60 backdrop-blur grid place-items-center ${toneMap[tone].split(' ').slice(-1)[0]}`}><Icon className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+          <div className={`h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-background/60 backdrop-blur grid place-items-center shrink-0 ${toneMap[tone].split(' ').slice(-1)[0]}`}><Icon className="h-4 w-4 sm:h-5 sm:w-5" /></div>
         </div>
       </CardContent>
     </Card>
@@ -1343,7 +1343,7 @@ function EnhancedChart({
   )
 }
 
-function RecCard({ r, currency, onApply }) {
+function RecCard({ r, currency, onApply, applying = false }) {
   const fmt = fmtFor(currency)
   const severityBadge = {
     high: 'bg-red-500/15 text-red-400 border-red-500/30',
@@ -1356,20 +1356,20 @@ function RecCard({ r, currency, onApply }) {
       <CardContent className="p-5 flex flex-col justify-between h-full space-y-4">
         <div>
           <div className="flex items-start justify-between gap-2">
-            <h4 className="font-semibold text-sm flex items-center gap-2">
-              {r.title}
+            <h4 className="font-semibold text-sm flex flex-wrap items-center gap-2 min-w-0 leading-snug">
+              <span className="min-w-0 break-words">{r.title}</span>
               {r.rule_based && <Badge variant="secondary" className="text-[10px] bg-purple-500/15 text-purple-400 border-purple-500/30">Custom Rule</Badge>}
             </h4>
             <Badge variant="outline" className={severityBadge}>{r.priority || 'Medium'}</Badge>
           </div>
           <p className="mt-2 text-xs text-muted-foreground leading-relaxed">{r.description}</p>
         </div>
-        <div className="flex items-center justify-between pt-2 border-t border-border/50">
+        <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between gap-3 pt-2 border-t border-border/50">
           <div>
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Est. Savings</span>
             <div className="text-lg font-bold text-emerald-400">{r.potential_savings > 0 ? `${fmt(r.potential_savings)}/mo` : 'Efficiency Review'}</div>
           </div>
-          <Button size="sm" onClick={() => onApply(r.id)} className="bg-emerald-600 hover:bg-emerald-700 text-white">Apply Action</Button>
+          <Button size="sm" onClick={() => onApply(r.id)} disabled={applying} className="w-full min-[420px]:w-auto bg-emerald-600 hover:bg-emerald-700 text-white">{applying ? 'Applying…' : 'Apply Action'}</Button>
         </div>
       </CardContent>
     </Card>
@@ -1394,7 +1394,7 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
   return (
     <div className="space-y-6">
       {/* 7 KPI Cards */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <StatCard icon={PiggyBank} label="Total Monthly Cost" value={fmt(stats.totalMonthlyCost)} sub="Live sum of active resources" tone="purple" />
         <StatCard icon={Boxes} label="Active Resources" value={stats.activeResources} sub={`out of ${stats.totalResources} total`} tone="blue" />
         <StatCard icon={Server} label="Total Services" value={stats.activeServices} sub="unique active services" tone="cyan" />
@@ -1406,19 +1406,19 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
 
       {/* Global Dashboard Time Range Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border border-border/60 bg-muted/20 backdrop-blur-sm">
-        <div className="flex items-center gap-2">
+        <div className="flex items-start sm:items-center gap-2 min-w-0">
           <div className="h-8 w-8 rounded-lg bg-primary/10 grid place-items-center text-primary">
             <BarChart3 className="h-4 w-4" />
           </div>
-          <div>
-            <div className="text-sm font-semibold flex items-center gap-2">
-              <span>Interactive FinOps Visualizations</span>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold flex items-center gap-2 min-w-0">
+              <span className="truncate">Interactive FinOps Visualizations</span>
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" title="Live data" />
             </div>
-            <div className="text-[11px] text-muted-foreground">Adjust global time range across all 7 charts or customize each individually</div>
+            <div className="text-[11px] text-muted-foreground leading-relaxed">Adjust global time range across all 7 charts or customize each individually</div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto">
         <div className="flex items-center gap-1 bg-background/80 p-1 rounded-lg border border-border/60 max-w-full overflow-x-auto no-scrollbar">
           <span className="text-[11px] font-medium text-muted-foreground px-2 flex items-center gap-1">
             <CalendarDays className="h-3 w-3 text-cyan-400" /> Range:
@@ -1558,12 +1558,12 @@ function DashboardPage({ data, onOpenDemoModal, onOpenImportModal, onNavigate, o
 
       {/* FinOps Quick Recommendations */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="min-w-0">
             <CardTitle className="text-base sm:text-lg">Top Optimization Recommendations</CardTitle>
             <CardDescription className="text-xs">Actionable FinOps rules to reduce cloud expenditure</CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={() => onNavigate('recommendations')}>View All ({recommendations.length})</Button>
+          <Button variant="outline" size="sm" className="self-start sm:self-auto" onClick={() => onNavigate('recommendations')}>View All ({recommendations.length})</Button>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
@@ -1740,23 +1740,23 @@ function ResourcesPage({ currency, onDataChange, externalSearch }) {
   return (
     <div className="space-y-4">
       {/* Top Filter Bar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+        <div className="relative flex-1 min-w-0 sm:min-w-[200px]">
           <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Search by name, service, region, owner…" value={filters.search} onChange={(e) => setF('search', e.target.value)} className="pl-9 text-xs" />
         </div>
-        <Select value={filters.service} onValueChange={(v) => setF('service', v)}><SelectTrigger className="w-[140px] text-xs"><SelectValue placeholder="Service" /></SelectTrigger><SelectContent><SelectItem value="all">All services</SelectItem>{facets.services.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
-        <Select value={filters.region} onValueChange={(v) => setF('region', v)}><SelectTrigger className="w-[130px] text-xs"><SelectValue placeholder="Region" /></SelectTrigger><SelectContent><SelectItem value="all">All regions</SelectItem>{facets.regions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
-        <Select value={filters.status} onValueChange={(v) => setF('status', v)}><SelectTrigger className="w-[120px] text-xs"><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="all">All status</SelectItem>{facets.statuses.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
+        <Select value={filters.service} onValueChange={(v) => setF('service', v)}><SelectTrigger className="w-full sm:w-[140px] text-xs"><SelectValue placeholder="Service" /></SelectTrigger><SelectContent><SelectItem value="all">All services</SelectItem>{facets.services.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
+        <Select value={filters.region} onValueChange={(v) => setF('region', v)}><SelectTrigger className="w-full sm:w-[130px] text-xs"><SelectValue placeholder="Region" /></SelectTrigger><SelectContent><SelectItem value="all">All regions</SelectItem>{facets.regions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
+        <Select value={filters.status} onValueChange={(v) => setF('status', v)}><SelectTrigger className="w-full sm:w-[120px] text-xs"><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="all">All status</SelectItem>{facets.statuses.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
         {activeFilterCount > 0 && <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs"><X className="h-4 w-4 mr-1" /> Clear</Button>}
-        <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true) }} className="text-xs"><Plus className="h-4 w-4 mr-1.5" /> Add Resource</Button>
+        <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true) }} className="w-full sm:w-auto text-xs"><Plus className="h-4 w-4 mr-1.5" /> Add Resource</Button>
       </div>
 
       {/* Bulk Action Bar */}
       {selectedIds.length > 0 && (
-        <div className="flex items-center justify-between bg-primary/10 border border-primary/20 px-4 py-2 rounded-lg text-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-primary/10 border border-primary/20 px-3 sm:px-4 py-2 rounded-lg text-xs">
           <span>Selected <b>{selectedIds.length}</b> resources</span>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" onClick={() => handleBulkAction('bulk_status', 'Active')}>Set Active</Button>
             <Button size="sm" variant="secondary" onClick={() => handleBulkAction('bulk_status', 'Idle')}>Set Idle</Button>
             <Button size="sm" variant="destructive" onClick={() => handleBulkAction('bulk_delete')}>Delete Selected</Button>
@@ -2017,6 +2017,7 @@ function BudgetPage({ data, refresh }) {
 // ============================ OPTIMIZE PAGE ============================
 function RecommendationsPage({ data, refresh }) {
   const [recs, setRecs] = useState(null)
+  const [applying, setApplying] = useState(null)
   const currency = data?.currency || 'INR'
   const fmt = fmtFor(currency)
   const loadRecs = useCallback(() => {
@@ -2025,16 +2026,17 @@ function RecommendationsPage({ data, refresh }) {
   useEffect(() => { loadRecs() }, [data, loadRecs])
 
   const handleApply = async (recId) => {
+    if (applying) return
+    setApplying(recId)
     try {
       const res = await fetch(`/api/recommendations/${recId}/apply`, { method: 'POST' })
+      const payload = await res.json().catch(() => ({}))
       if (res.ok) {
-        toast.success('Recommendation action applied!')
-        loadRecs()
-        refresh?.()
-      }
-    } catch {
-      toast.error('Failed to apply recommendation')
-    }
+        toast.success(payload.alreadyApplied ? 'This action was already applied.' : 'Recommendation action applied and saved.')
+        await Promise.all([loadRecs(), refresh?.()])
+      } else toast.error(payload.error || 'Failed to apply recommendation')
+    } catch (error) { toast.error(error?.message || 'Failed to apply recommendation')
+    } finally { setApplying(null) }
   }
 
   if (!recs) return <LoadingGrid />
@@ -2050,7 +2052,7 @@ function RecommendationsPage({ data, refresh }) {
         </CardContent>
       </Card>
       {recs.length === 0 ? <Card><CardContent className="p-10 text-center text-muted-foreground">No recommendations — your workspace looks optimized.</CardContent></Card> : (
-        <div className="grid gap-3 md:grid-cols-2">{recs.map((r) => <RecCard key={r.id} r={r} currency={currency} onApply={handleApply} />)}</div>
+        <div className="grid gap-3 md:grid-cols-2">{recs.map((r) => <RecCard key={r.id} r={r} currency={currency} onApply={handleApply} applying={applying === r.id} />)}</div>
       )}
     </div>
   )
@@ -2637,7 +2639,7 @@ export default function App() {
         />
         <MobileNav active={active} setActive={setActive} />
 
-        <main ref={mainRef} className="flex-1 min-w-0 p-3 sm:p-6 md:p-8 overflow-y-auto overflow-x-hidden">
+        <main ref={mainRef} className="flex-1 min-w-0 p-2.5 min-[420px]:p-3 sm:p-6 md:p-8 overflow-y-auto overflow-x-hidden">
           {active === 'dashboard' && <DashboardPage data={data} onOpenDemoModal={() => setDemoModalOpen(true)} onOpenImportModal={() => setImportModalOpen(true)} onNavigate={handleNavigate} onApplyRec={handleApplyRecommendation} onClearWorkspace={handleClearWorkspace} />}
           {active === 'resources' && <ResourcesPage currency={currency} onDataChange={load} externalSearch={topSearch} />}
           {active === 'analytics' && <AnalyticsPage data={data} />}
