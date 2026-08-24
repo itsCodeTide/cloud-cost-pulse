@@ -1368,7 +1368,7 @@ export async function POST(request, ctx) {
         }
         await db.collection('applied_recommendations').updateOne(
           { tenantId, recId },
-          { $set: { tenantId, recId, applied_at: now, applied_by: userId, result } },
+          { $set: { _id: `applied:${tenantId}:${recId}`, tenantId, recId, applied_at: now, applied_by: userId, result } },
           { upsert: true }
         )
         await audit(db, tenantId, userId, { action: 'apply_recommendation', entity: historyEntity, entity_id: historyId, new_value: historyMessage })
@@ -1382,7 +1382,7 @@ export async function POST(request, ctx) {
       if (recAction === 'dismiss') {
         await db.collection('applied_recommendations').updateOne(
           { tenantId, recId },
-          { $set: { tenantId, recId, dismissed_at: new Date(), dismissed_by: userId } },
+          { $set: { _id: `applied:${tenantId}:${recId}`, tenantId, recId, dismissed_at: new Date(), dismissed_by: userId } },
           { upsert: true }
         )
         await audit(db, tenantId, userId, { action: 'dismiss_recommendation', entity: 'recommendation', entity_id: recId })
