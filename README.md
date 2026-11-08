@@ -99,5 +99,23 @@ cloud-cost-pulse/
 ├── schema.sql                     # Production PostgreSQL schema DDL
 ├── ARCHITECTURE.md                # System Architecture & FinOps Formulas
 ├── API_DOCUMENTATION.md           # REST API Reference Documentation
-└── DEPLOYMENT_GUIDE.md            # Vercel & Supabase Deployment Guide
+├── CONTRIBUTING.md                # Contribution & Setup Guidelines
+├── DEPLOYMENT_GUIDE.md            # Vercel & Supabase Deployment Guide
+└── TEST_REPORT.md                 # Test Verification Report
 ```
+
+---
+
+## Documentation
+
+Explore the following documentation to understand, develop, and deploy Cloud-Cost-Pulse.
+
+| Document | Description |
+|---|---|
+| [Contributing Guide](CONTRIBUTING.md) | Local setup and contribution guidelines |
+| [Architecture](ARCHITECTURE.md) | System architecture, design, and cost calculation formulas |
+| [API Documentation](API_DOCUMENTATION.md) | REST API endpoints and usage |
+| [Deployment Guide](DEPLOYMENT_GUIDE.md) | Production deployment instructions |
+| [Test Report](TEST_REPORT.md) | Application testing and verification |
+
+For local development and contribution instructions, start with the [Contributing Guide](CONTRIBUTING.md).
