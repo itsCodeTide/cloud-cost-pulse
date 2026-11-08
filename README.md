@@ -101,3 +101,51 @@ cloud-cost-pulse/
 ├── API_DOCUMENTATION.md           # REST API Reference Documentation
 └── DEPLOYMENT_GUIDE.md            # Vercel & Supabase Deployment Guide
 ```
+## Security & Data Management
+
+### Environment Variables
+
+Cloud-Cost-Pulse uses environment variables to configure authentication, database connections, and third-party integrations.
+
+- Store credentials in environment variables.
+- Never commit `.env.local` or production secrets.
+- Keep Supabase secret keys server-side.
+- Use `.env.example` as a configuration reference.
+
+### Data Persistence
+
+The application supports Supabase-backed PostgreSQL persistence.
+
+When Supabase is configured, application data is stored in the database. Depending on the configured environment and adapter, fallback storage may be used when Supabase is unavailable.
+
+### Application Data Flow
+
+1. Users interact with the Next.js dashboard.
+2. API requests are handled by Next.js route handlers.
+3. Application services validate and process incoming data.
+4. Data is persisted through the configured storage adapter.
+5. Processed results are returned to the dashboard.
+6. Recharts visualizes cloud spending, budgets, and optimization insights.
+
+### Running Tests
+
+Run the automated test suite:
+
+```bash
+node tests/run_all_tests.js
+```
+
+### Current Limitations
+
+- Cloud provider integrations require valid credentials and permissions.
+- Demo datasets are intended for testing and demonstration.
+- Actual savings depend on cloud provider pricing, usage, and successful implementation of recommendations.
+- Production deployments should use persistent database storage.
+
+### Future Improvements
+
+- AWS and Google Cloud cost integrations.
+- More advanced anomaly detection.
+- Historical cost forecasting improvements.
+- Role-based access control.
+- Expanded automated integration tests.
